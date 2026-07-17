@@ -152,6 +152,19 @@ export default function Home(){
     drawShape(doc,sel.geometry,W-M-46,30,46,34);
     y+=7;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(100,116,139);
     doc.text(`APN ${sel.apn}    ${sel.label} County    ${sel.acreage} acres`,M,y);
+    if(report){
+      y+=8;
+      doc.setFillColor(15,23,42);doc.roundedRect(M,y,44,28,2,2,"F");
+      doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(21);doc.text(String(score),M+22,y+15,{align:"center"});
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(148,163,184);doc.text("PROJECT SCORE /100",M+22,y+21,{align:"center"});
+      const kx=M+54, kw=(W-M-kx)/3;
+      ([["Development",potential.t],["Regulatory risk",regRisk.t],["Market demand",demand.t]] as [string,string][]).forEach((k,i)=>{
+        const x=kx+i*kw;
+        doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text(k[0],x,y+9);
+        doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(15,23,42);doc.text(k[1],x,y+20);
+      });
+      y+=34;
+    }
     if(analysis){
       y+=10;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;
       doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text("INVESTOR ANALYSIS"+(aiFlag?"  (AI)":""),M,y);y+=6;
@@ -187,6 +200,23 @@ export default function Home(){
   }
 
   const b=report?.buildability, rk=report?.risk;
+  // ---- investor dashboard scoring (heuristic screen, not an appraisal) ----
+  const u = b?.maxUnits;
+  const potential = u==null ? {t:"—",c:"gray"} : u>=5 ? {t:"Premium",c:"green"} : u>=2 ? {t:"Strong",c:"green"} : u===1 ? {t:"Single-dwelling",c:"amber"} : {t:"Limited",c:"amber"};
+  const riskFlags = [rk?.flood,rk?.fire,rk?.williamson,rk?.terrain].filter(Boolean) as any[];
+  const anyRed = riskFlags.some(f=>f.level==="red");
+  const anyAmber = riskFlags.some(f=>f.level==="amber");
+  const regRisk = !report ? {t:"—",c:"gray"} : anyRed ? {t:"High",c:"red"} : anyAmber ? {t:"Medium",c:"amber"} : {t:"Low",c:"green"};
+  const demand = !actEnabled ? {t:"—",c:"gray"} : (actBusy&&!activity) ? {t:"…",c:"gray"} : activity && /data center|industrial|warehouse|logistics|growth|expansion|boom|corridor|construction|development|approved|proposed/i.test(activity) ? {t:"Strong",c:"green"} : activity ? {t:"Moderate",c:"amber"} : {t:"Quiet",c:"gray"};
+  let score = 55;
+  if(u!=null) score += Math.min(24, u*4);
+  if(rk?.flood?.level==="red") score -= 16;
+  if(rk?.fire){ if(/very high/i.test(rk.fire.text)) score -= 12; else if(/high/i.test(rk.fire.text)) score -= 7; else if(rk.fire.level==="amber") score -= 3; }
+  if(rk?.williamson?.level==="red") score -= 20;
+  if(rk?.terrain?.level==="amber") score -= 3;
+  if(demand.t==="Strong") score += 8; else if(demand.t==="Moderate") score += 3;
+  score = Math.max(12, Math.min(97, Math.round(score)));
+  const via = score>=80?{t:"High viability",c:"#16a34a"}:score>=62?{t:"Solid",c:"#2563eb"}:score>=45?{t:"Moderate",c:"#b45309"}:{t:"Challenged",c:"#dc2626"};
   const val=sel?money(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","assd_total","total_value"])):null;
   const land=sel?money(pickVal(sel.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"])):null;
   const useCode=sel?pickVal(sel.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]):null;
@@ -243,6 +273,24 @@ export default function Home(){
           </div>
 
           <div style={{padding:"0 18px 18px"}}>
+            {report && (
+              <div style={{marginTop:14,display:"flex",gap:10}}>
+                <div style={{flex:"0 0 118px",background:"#0f172a",borderRadius:12,padding:"12px 14px",color:"#fff"}}>
+                  <div style={{fontSize:9,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",color:"#94a3b8"}}>Project Score</div>
+                  <div style={{fontSize:30,fontWeight:800,lineHeight:1.1,marginTop:2}}>{score}<span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>/100</span></div>
+                  <div style={{fontSize:11,fontWeight:700,marginTop:2,color:via.c==="#2563eb"?"#7dd3fc":via.c==="#16a34a"?"#86efac":via.c==="#b45309"?"#fcd34d":"#fca5a5"}}>{via.t}</div>
+                </div>
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                  {([["Development",potential],["Regulatory risk",regRisk],["Market demand",demand]] as [string,{t:string;c:string}][]).map(([lab,k])=>(
+                    <div key={lab} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f8fafc",borderRadius:8,padding:"7px 11px"}}>
+                      <span style={{fontSize:11.5,color:"#64748b",fontWeight:500}}>{lab}</span>
+                      <span style={S(k.c)}>{k.t}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{marginTop:14,padding:"14px 16px",background:"linear-gradient(135deg,#eff6ff,#f0f9ff)",border:"1px solid #dbeafe",borderRadius:12}}>
               <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#2563eb",marginBottom:8}}>
                 <span>◆ Investor Analysis</span>{aiFlag&&<span style={{fontSize:9,background:"#2563eb",color:"#fff",padding:"1px 6px",borderRadius:999}}>AI</span>}
