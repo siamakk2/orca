@@ -1,267 +1,229 @@
-"use client";
-import { useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import Link from "next/link";
 
-type Slug = "los_angeles" | "napa";
-const VIEWS: Record<Slug,{c:[number,number];z:number;label:string}> = {
-  los_angeles:{c:[-118.2437,34.0522],z:11,label:"Los Angeles"},
-  napa:{c:[-122.2869,38.2975],z:12,label:"Napa"},
+export const metadata = {
+  title: "K2 Investment — Land Feasibility, Automated",
+  description: "Instant parcel feasibility for California real estate. What you can build, what could stop the deal, and whether it's worth it — in under two minutes.",
 };
-const STYLE = {version:8,sources:{carto:{type:"raster",tiles:["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png","https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png","https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],tileSize:256,attribution:"© OpenStreetMap © CARTO"}},layers:[{id:"carto",type:"raster",source:"carto"}]} as unknown as maplibregl.StyleSpecification;
 
-type Match = {apn:string;address:string;acreage:number;label:string;geometry:GeoJSON.Geometry;attrs:Record<string,any>};
-
-const BC:Record<string,string>={green:"#dcfce7",amber:"#fef3c7",red:"#fee2e2",gray:"#f1f5f9"};
-const BT:Record<string,string>={green:"#166534",amber:"#92400e",red:"#991b1b",gray:"#475569"};
-function centroid(g:any){const polys=g.type==="Polygon"?[g.coordinates]:g.coordinates;let x=0,y=0,n=0;polys.forEach((pl:any)=>pl[0].forEach((c:any)=>{x+=c[0];y+=c[1];n++}));return[x/n,y/n]}
-function money(v:any){const n=Number(v);return v==null||Number.isNaN(n)||n===0?null:"$"+n.toLocaleString(undefined,{maximumFractionDigits:0})}
-function pickVal(a:Record<string,any>,names:string[]){for(const nm of names)for(const k in a){if(k.toLowerCase()===nm.toLowerCase()&&a[k]!=null&&String(a[k]).trim()!=="")return a[k]}return null}
-function drawShape(doc:any,geo:any,x:number,y:number,w:number,h:number){
-  const ring=geo?.type==="Polygon"?geo.coordinates[0]:geo?.coordinates?.[0]?.[0];
-  if(!ring||!ring.length)return;
-  let mnX=1e9,mnY=1e9,mxX=-1e9,mxY=-1e9;
-  ring.forEach((c:any)=>{mnX=Math.min(mnX,c[0]);mxX=Math.max(mxX,c[0]);mnY=Math.min(mnY,c[1]);mxY=Math.max(mxY,c[1])});
-  const dx=(mxX-mnX)||1,dy=(mxY-mnY)||1,s=Math.min(w/dx,h/dy);
-  const ox=x+(w-dx*s)/2,oy=y+(h-dy*s)/2;
-  const pts=ring.map((c:any)=>[ox+(c[0]-mnX)*s,oy+(mxY-c[1])*s]);
-  const rel=pts.slice(1).map((p:any,i:number)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);
-  doc.setFillColor(207,242,250);doc.setDrawColor(14,116,144);doc.setLineWidth(0.5);
-  doc.lines(rel,pts[0][0],pts[0][1],[1,1],"FD",true);
-}
-
-export default function Home(){
-  const mapRef=useRef<maplibregl.Map|null>(null);
-  const boxRef=useRef<HTMLDivElement|null>(null);
-  const [county,setCounty]=useState<Slug>("napa");
-  const [addr,setAddr]=useState("");
-  const [busy,setBusy]=useState(false);
-  const [msg,setMsg]=useState("Search an address or APN, or tap the map.");
-  const [matches,setMatches]=useState<Match[]>([]);
-  const [sel,setSel]=useState<Match|null>(null);
-  const [report,setReport]=useState<any>(null);
-  const [repBusy,setRepBusy]=useState(false);
-  const [analysis,setAnalysis]=useState<string|null>(null);
-  const [anaBusy,setAnaBusy]=useState(false);
-  const [aiFlag,setAiFlag]=useState(false);
-  const [ready,setReady]=useState(false);
-
-  useEffect(()=>{
-    if(mapRef.current||!boxRef.current)return;
-    const m=new maplibregl.Map({container:boxRef.current,style:STYLE,center:VIEWS.napa.c,zoom:VIEWS.napa.z});
-    mapRef.current=m;
-    m.addControl(new maplibregl.NavigationControl(),"top-right");
-    m.on("load",()=>{
-      m.resize();setReady(true);
-      m.addSource("p",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
-      m.addLayer({id:"pf",type:"fill",source:"p",paint:{"fill-color":"#2563eb","fill-opacity":0.28}});
-      m.addLayer({id:"pl",type:"line",source:"p",paint:{"line-color":"#1e40af","line-width":2.5}});
-    });
-    m.on("error",e=>console.warn("map",e?.error?.message||e));
-    m.on("click",e=>{void lookupPoint(e.lngLat.lat,e.lngLat.lng)});
-    return ()=>{m.remove();mapRef.current=null};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
-
-  function draw(g:GeoJSON.Geometry|null){
-    const m=mapRef.current, src=m?.getSource("p") as maplibregl.GeoJSONSource|undefined;
-    if(!src||!m)return;
-    if(!g){src.setData({type:"FeatureCollection",features:[]});return}
-    src.setData({type:"FeatureCollection",features:[{type:"Feature",properties:{},geometry:g}]});
-    const b=new maplibregl.LngLatBounds(), gg=g as any;
-    (gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl.forEach((r:any)=>r.forEach((c:any)=>b.extend(c))));
-    if(!b.isEmpty())m.fitBounds(b,{padding:60,maxZoom:17});
-  }
-  async function choose(mt:Match){
-    setSel(mt);setMatches([]);draw(mt.geometry);setMsg(`${mt.label} County · ${mt.address||mt.apn}`);
-    setReport(null);setRepBusy(true);setAnalysis(null);
-    const [lon,lat]=centroid(mt.geometry as any);
-    const cSlug=mt.label==="Napa"?"napa":"los_angeles";
-    let rep:any=null;
-    try{
-      const r=await fetch(`/api/feasibility?lon=${lon}&lat=${lat}&acres=${mt.acreage}&county=${cSlug}`);
-      rep=await r.json();setReport(rep);
-    }catch{setReport({error:true})}
-    finally{setRepBusy(false)}
-    setAnaBusy(true);
-    try{
-      const uCode=pickVal(mt.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
-      const assessed=money(pickVal(mt.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]));
-      const landv=money(pickVal(mt.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"]));
-      const ar=await fetch("/api/analysis",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,apn:mt.apn,acreage:mt.acreage,county:mt.label,buildability:rep?.buildability,risk:rep?.risk,useCode:uCode,assessed,land:landv})});
-      const aj=await ar.json();setAnalysis(aj.narrative||null);setAiFlag(!!aj.ai);
-    }catch{setAnalysis(null)}
-    finally{setAnaBusy(false)}
-  }
-
-  async function run(url:string,label:string){
-    setBusy(true);setSel(null);setMatches([]);setReport(null);setMsg(label);
-    try{
-      const r=await fetch(url);const d=await r.json();
-      if(d.status==="ok"&&d.matches?.length){
-        const near=d.match==="nearby"||d.match==="approximate";
-        if(d.matches.length===1&&!near){choose(d.matches[0])}
-        else{setMatches(d.matches);draw(null);setMsg(near?"No address on file for that number — parcels at that spot, nearest first. Pick yours:":`${d.matches.length} parcels match — pick yours:`)}
-      } else {draw(null);setMsg(d.message||"No parcel found.")}
-    }catch{setMsg("Search failed — try again.")}
-    finally{setBusy(false)}
-  }
-  const lookupPoint=(lat:number,lon:number)=>run(`/api/parcel?lat=${lat}&lon=${lon}`,"Fetching parcel…");
-  const search=()=>{const q=addr.trim();if(q)run(`/api/parcel?q=${encodeURIComponent(q)}&county=${county}`,"Searching records…")};
-  function jump(c:Slug){setCounty(c);mapRef.current?.flyTo({center:VIEWS[c].c,zoom:VIEWS[c].z})}
-
-  async function downloadPDF(){
-    if(!sel)return;
-    const { jsPDF } = await import("jspdf");
-    const doc:any = new jsPDF({unit:"mm",format:"a4"});
-    const W=210,M=15;let y=0;
-    const V=(n:string[])=>money(pickVal(sel.attrs,n));
-    const vAssessed=V(["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]);
-    const vLand=V(["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"]);
-    const uCode=pickVal(sel.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
-    const bb=report?.buildability||{}, rr=report?.risk||{};
-    try{
-      const blob=await (await fetch("/k2-logo.png")).blob();
-      const durl:string=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result as string);r.readAsDataURL(blob)});
-      doc.addImage(durl,"PNG",M,6,15,15);
-    }catch{}
-    doc.setTextColor(15,23,42);doc.setFont("helvetica","bold");doc.setFontSize(17);doc.text("K2 INVESTMENT",M+19,13.5);
-    doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(37,99,235);doc.text("PARCEL FEASIBILITY REPORT",M+19,19);
-    doc.setTextColor(148,163,184);doc.setFontSize(8);doc.text(new Date().toLocaleDateString(),W-M,13.5,{align:"right"});
-    doc.setDrawColor(226,232,240);doc.setLineWidth(0.4);doc.line(M,25,W-M,25);
-    y=38;
-    doc.setTextColor(15,23,42);doc.setFont("helvetica","bold");doc.setFontSize(15);
-    doc.text(sel.address||"Vacant parcel (no address on file)",M,y);
-    drawShape(doc,sel.geometry,W-M-46,30,46,34);
-    y+=7;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(100,116,139);
-    doc.text(`APN ${sel.apn}    ${sel.label} County    ${sel.acreage} acres`,M,y);
-    if(analysis){
-      y+=10;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;
-      doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text("INVESTOR ANALYSIS"+(aiFlag?"  (AI)":""),M,y);y+=6;
-      doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);
-      doc.splitTextToSize(analysis.replace(/\*\*/g,""),W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5});
-    }
-    const sec=(t:string)=>{if(y>250){doc.addPage();y=20}y+=8;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text(t,M,y);y+=6.5;doc.setFont("helvetica","normal");doc.setFontSize(10)};
-    const row=(k:string,v:any,c?:number[])=>{if(y>278){doc.addPage();y=20}doc.setTextColor(100,116,139);doc.setFont("helvetica","normal");doc.text(k,M,y);const col=c||[15,23,42];doc.setTextColor(col[0],col[1],col[2]);doc.setFont("helvetica","bold");doc.text(String(v),W-M,y,{align:"right"});y+=6.6};
-    const RC:Record<string,number[]>={green:[22,101,52],amber:[146,64,14],red:[153,27,27],gray:[100,116,139]};
-    sec("1.  What You Can Build");
-    row("Zoning district",bb.code||"Not returned");
-    if(bb.name)row("District",bb.name); if(bb.use)row("Primary use",bb.use); if(bb.minLot)row("Min lot / density",bb.minLot);
-    row("Max dwellings (by density)",bb.maxUnits!=null?bb.maxUnits:"—",[37,99,235]);
-    if(bb.envelope)row("Est. buildable footprint",bb.envelope.toLocaleString()+" sf");
-    row("ADU potential","1 ADU + 1 JADU likely (CA state law)");
-    sec("2.  What Could Stop a Deal");
-    ([["Flood zone (FEMA)","flood"],["Fire hazard","fire"],["Williamson Act","williamson"],["Terrain","terrain"]] as const).forEach(([lab,k])=>{const r=rr[k as string];row(lab,r?r.text:"—",r?RC[r.level]:undefined)});
-    sec("3.  Is It Worth It");
-    if(uCode)row("Land use (county code)",String(uCode));
-    row("Development capacity",bb.maxUnits!=null?`${bb.maxUnits} dwelling${bb.maxUnits===1?"":"s"} by right`:"—");
-    row("Assessed value",vAssessed||"Not published in public layer");
-    row("Assessed land value",vLand||"Not published in public layer");
-    if(y>270){doc.addPage();y=20}else{y+=6}
-    doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=5;
-    doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(148,163,184);
-    doc.text(doc.splitTextToSize("Sources: county assessor parcel data, FEMA National Flood Hazard Layer, county hazard layers. Zoning is summarized for common districts — confirm against the county code and overlays. This is a rapid feasibility screen, not an appraisal or a substitute for professional due diligence.",W-2*M),M,y);
-    doc.save(`Orca-Feasibility-${sel.apn.replace(/[^\w]/g,"")}.pdf`);
-  }
-
-  const b=report?.buildability, rk=report?.risk;
-  const val=sel?money(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","assd_total","total_value"])):null;
-  const land=sel?money(pickVal(sel.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"])):null;
-  const useCode=sel?pickVal(sel.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]):null;
-
-  const S=(bg:string)=>({display:"inline-block",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,background:BC[bg]||BC.gray,color:BT[bg]||BT.gray});
-  const kv=(k:string,v:any)=>(<div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #f4f6f9",fontSize:13}}><span style={{color:"#64748b"}}>{k}</span><span style={{fontWeight:600,textAlign:"right"}}>{v}</span></div>);
-  const H=(t:string)=>(<div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#1d4ed8",margin:"16px 0 4px"}}>{t}</div>);
-
+export default function Landing() {
   return (
-    <div style={{position:"relative",height:"100vh",width:"100vw",overflow:"hidden",fontFamily:"system-ui,-apple-system,sans-serif"}}>
-      <div ref={boxRef} style={{position:"absolute",inset:0,background:"#eef2f5"}}/>
-      <div style={{position:"absolute",top:0,left:0,right:0,zIndex:10,display:"flex",flexWrap:"wrap",gap:8,padding:12,alignItems:"flex-start",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,background:"#fff",borderRadius:12,padding:"7px 14px",boxShadow:"0 4px 14px rgba(0,0,0,.15)"}}>
-          <img src="/k2-logo.png" alt="K2" style={{height:30,width:30,objectFit:"contain"}}/>
-          <span style={{color:"#0f172a",fontWeight:800,fontSize:16,letterSpacing:-.3}}>K2&nbsp;<span style={{color:"#2563eb"}}>Investment</span></span>
-          <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:"1px solid #cbd5e1",marginLeft:2}}>
-            {(["los_angeles","napa"] as const).map(c=>(
-              <button key={c} onClick={()=>jump(c)} style={{padding:"5px 12px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:county===c?"#2563eb":"transparent",color:county===c?"#fff":"#475569"}}>{VIEWS[c].label}</button>
-            ))}
+    <main>
+      <style dangerouslySetInnerHTML={{__html: CSS}} />
+
+      {/* NAV */}
+      <header className="nav">
+        <div className="wrap navrow">
+          <div className="brand">
+            <img src="/k2-logo.png" alt="K2 Investment" />
+            <span>K2 <b>Investment</b></span>
+          </div>
+          <nav className="navlinks">
+            <a href="#how">How it works</a>
+            <a href="#abilities">What it does</a>
+            <Link className="btn btn-sm" href="/tool">Launch the app →</Link>
+          </nav>
+        </div>
+      </header>
+
+      {/* HERO */}
+      <section className="hero">
+        <div className="wrap hero-grid">
+          <div>
+            <div className="eyebrow">LAND DUE-DILIGENCE · AUTOMATED · STATEWIDE CALIFORNIA</div>
+            <h1>Know what you can build<br/><em>before</em> you buy the land.</h1>
+            <p className="lead">Type an address anywhere in California. In under two minutes K2 pulls the parcel, cross-references live flood and fire maps, reads the zoning, and hands you an investor-grade report — what you can build, what could kill the deal, and whether it's worth it.</p>
+            <div className="cta-row">
+              <Link className="btn btn-lg" href="/tool">Analyze a property →</Link>
+              <a className="btn btn-ghost btn-lg" href="#how">See how it works</a>
+            </div>
+            <div className="trust">Built by K2 Investment Inc. · 30 years in California real estate</div>
+          </div>
+          <div className="hero-card">
+            <div className="hc-head">
+              <span className="hc-dot" /> <b>20 Longhorn Ridge Rd</b> · Napa
+            </div>
+            <div className="hc-row"><span>Zoning</span><b>AW — Agricultural Watershed</b></div>
+            <div className="hc-row"><span>Max dwellings</span><b className="accent">1 + ADU</b></div>
+            <div className="hc-row"><span>Flood (FEMA)</span><b className="ok">Zone X · minimal</b></div>
+            <div className="hc-row"><span>Fire hazard</span><b className="warn">Very High</b></div>
+            <div className="hc-analysis">"A single-estate or agricultural hold — upside is scenic value and ADU income, not density. Fire rating is the main carrying-cost risk…"</div>
+            <div className="hc-foot">Investor Analysis · auto-generated</div>
           </div>
         </div>
-        <div style={{display:"flex",gap:8,background:"#fff",borderRadius:12,padding:8,boxShadow:"0 4px 14px rgba(0,0,0,.15)",flex:"1 1 320px",maxWidth:460}}>
-          <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")search()}} placeholder={`Address or APN in ${VIEWS[county].label}…`} style={{flex:1,minWidth:0,border:"none",outline:"none",fontSize:14,padding:"8px 10px",color:"#0f172a"}}/>
-          <button onClick={search} disabled={busy} style={{border:"none",borderRadius:8,background:"#2563eb",color:"#fff",fontWeight:600,fontSize:14,padding:"8px 16px",cursor:"pointer",opacity:busy?.5:1}}>{busy?"…":"Search"}</button>
+      </section>
+
+      {/* PROBLEM */}
+      <section className="strip">
+        <div className="wrap strip-grid">
+          <div><div className="big">3–5 days</div><p>digging through county sites & 100-page zoning PDFs</p></div>
+          <div><div className="big">$5,000+</div><p>in consultant fees per parcel for the same answers</p></div>
+          <div className="arrow">→</div>
+          <div className="hl"><div className="big accent">&lt; 2 min</div><p>one address, one report, with K2</p></div>
         </div>
-      </div>
+      </section>
 
-      {!sel && matches.length===0 && (
-        <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",zIndex:10,background:"rgba(255,255,255,.95)",borderRadius:999,padding:"6px 16px",fontSize:12,fontWeight:500,color:"#475569",boxShadow:"0 2px 8px rgba(0,0,0,.12)",maxWidth:"90vw",textAlign:"center"}}>{!ready?"Loading map…":msg}</div>
-      )}
-
-      {matches.length>0 && (
-        <div style={{position:"absolute",top:76,left:12,zIndex:10,width:360,maxWidth:"92vw",maxHeight:"64vh",overflowY:"auto",background:"#fff",borderRadius:12,boxShadow:"0 8px 24px rgba(0,0,0,.18)"}}>
-          <div style={{padding:"12px 16px",fontSize:12,fontWeight:700,color:"#334155",borderBottom:"1px solid #f1f5f9"}}>{msg}</div>
-          {matches.map((m,i)=>(
-            <button key={i} onClick={()=>choose(m)} style={{display:"block",width:"100%",textAlign:"left",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",padding:"11px 16px",cursor:"pointer"}}>
-              <div style={{fontSize:14,color:"#0f172a",fontWeight:600}}>{m.address||"(no address on file)"}</div>
-              <div style={{fontSize:12,color:"#64748b",fontFamily:"monospace"}}>APN {m.apn} · {m.acreage} ac</div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {sel && (
-        <div style={{position:"absolute",top:72,left:12,zIndex:10,width:380,maxWidth:"94vw",maxHeight:"84vh",overflowY:"auto",background:"#fff",borderRadius:14,boxShadow:"0 10px 30px rgba(0,0,0,.2)"}}>
-          <div style={{padding:"14px 18px",borderBottom:"1px solid #eef2f6",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div>
-              <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#1d4ed8"}}>{sel.label} County · Feasibility</div>
-              <div style={{fontSize:18,fontWeight:800,marginTop:2}}>{sel.address||"(vacant — no address on file)"}</div>
-              <div style={{fontSize:12,color:"#64748b",fontFamily:"monospace",marginTop:2}}>APN {sel.apn} · {sel.acreage} acres</div>
+      {/* ABILITIES */}
+      <section id="abilities" className="section">
+        <div className="wrap">
+          <h2 className="center">One report answers the three questions that decide a land deal</h2>
+          <div className="cards">
+            <div className="card">
+              <div className="cn">01</div>
+              <h3>What you can build</h3>
+              <p>The parcel's zoning district and allowed uses, minimum lot size and density, the maximum dwellings by right, ADU potential, and the buildable envelope — pulled live and read against the county code.</p>
             </div>
-            <div style={{display:"flex",gap:6,flexShrink:0}}>
-              <button onClick={downloadPDF} disabled={repBusy} title="Download investor PDF" style={{border:"none",background:"#1d4ed8",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,opacity:repBusy?.5:1}}>PDF</button>
-              <button onClick={()=>{setSel(null);setReport(null);draw(null);setMsg("Search an address or APN, or tap the map.")}} style={{border:"none",background:"#f1f5f9",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>×</button>
+            <div className="card">
+              <div className="cn">02</div>
+              <h3>What could stop the deal</h3>
+              <p>Live checks against FEMA flood zones, CAL FIRE hazard severity, Williamson Act contracts, and terrain — the constraints that quietly kill a project, surfaced as clear green / amber / red flags.</p>
+            </div>
+            <div className="card">
+              <div className="cn">03</div>
+              <h3>Whether it's worth it</h3>
+              <p>Land use, assessed value, development capacity, and a written <b>investor analysis</b> that weighs the upside against the risks and gives you a straight bottom-line take on the parcel.</p>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div style={{padding:"0 18px 18px"}}>
-            <div style={{marginTop:14,padding:"14px 16px",background:"linear-gradient(135deg,#eff6ff,#f0f9ff)",border:"1px solid #dbeafe",borderRadius:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#2563eb",marginBottom:8}}>
-                <span>◆ Investor Analysis</span>{aiFlag&&<span style={{fontSize:9,background:"#2563eb",color:"#fff",padding:"1px 6px",borderRadius:999}}>AI</span>}
-              </div>
-              {anaBusy&&!analysis ? <div style={{fontSize:13,color:"#64748b"}}>Analyzing the deal…</div>
-                : analysis ? <div style={{fontSize:13,lineHeight:1.6,color:"#1e293b",whiteSpace:"pre-wrap"}}>{analysis.replace(/\*\*/g,"")}</div>
-                : <div style={{fontSize:13,color:"#94a3b8"}}>Analysis unavailable.</div>}
-            </div>
-
-            {H("① What you can build")}
-            {repBusy && !report ? <div style={{fontSize:13,color:"#94a3b8",padding:"8px 0"}}>Reading zoning…</div> : b?.error ? <div style={{fontSize:13,color:"#94a3b8",padding:"8px 0"}}>Zoning layer didn't respond — verify with county.</div> : (<>
-              {kv("Zoning district", b?.code ? <span style={S("gray")}>{b.code}</span> : <span style={S("amber")}>not returned</span>)}
-              {b?.name && kv("District", b.name)}
-              {b?.use && kv("Primary use", b.use)}
-              {b?.minLot && kv("Min. parcel size (this zone)", b.minLot)}
-              {kv("Max dwellings (by density)", <span style={{fontSize:18,fontWeight:800,color:"#1d4ed8"}}>{b?.maxUnits!=null?b.maxUnits:"—"}</span>)}
-              {b?.envelope && kv("Est. buildable footprint", b.envelope.toLocaleString()+" sf")}
-              {kv("ADU potential", <span style={S("green")}>1 ADU + 1 JADU likely</span>)}
-              {b?.cite && <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Density/setbacks summarized from {b.cite}; confirm overlays at permitting.</div>}
-            </>)}
-
-            {H("② What could stop a deal")}
-            {["flood","fire","williamson","terrain"].map(key=>{
-              const r=rk?.[key]; const labels:Record<string,string>={flood:"Flood zone (FEMA)",fire:"Fire hazard",williamson:"Williamson Act",terrain:"Terrain"};
-              return kv(labels[key], repBusy&&!r?"…":r?<span style={S(r.level)}>{r.text}</span>:"—");
-            })}
-
-            {H("③ Is it worth it")}
-            {useCode && kv("Land use (county code)", String(useCode))}
-            {kv("Development capacity", b?.maxUnits!=null?<b>{b.maxUnits} dwelling{b.maxUnits===1?"":"s"} by right</b>:"—")}
-            {kv("Assessed value", val||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
-            {kv("Assessed land value", land||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
-            {val && kv("Value / acre", money((Number(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]))||0)/sel.acreage))}
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Public assessor values trail market and some counties don't publish them here. Size the opportunity from the max-dwellings figure × achievable per-unit value from comps.</div>
-
-            <div style={{marginTop:16,padding:"10px 12px",background:"#f8fafc",borderRadius:10,fontSize:11,color:"#94a3b8",lineHeight:1.5}}>Zoning rules are summarized for common districts and must be confirmed against the county code and overlays (setback, hillside, SEA). Not an appraisal — a fast go/no-go, not a substitute for due diligence.</div>
+      {/* FEATURES */}
+      <section className="section alt">
+        <div className="wrap feat-grid">
+          <div className="feat">
+            <div className="ficon">◆</div>
+            <h4>AI investor analysis</h4>
+            <p>Every report opens with a written take that reads the lot like an investor would — development angle, deal-killers, and a verdict.</p>
+          </div>
+          <div className="feat">
+            <div className="ficon">◎</div>
+            <h4>Statewide California</h4>
+            <p>Any address in the state. Parcel boundaries, zoning, and hazards normalized into one clean answer, county by county.</p>
+          </div>
+          <div className="feat">
+            <div className="ficon">▤</div>
+            <h4>Investor-grade PDF</h4>
+            <p>One tap exports a branded, downloadable report — the property outline, the three sections, and the analysis — ready to send.</p>
           </div>
         </div>
-      )}
-    </div>
+      </section>
+
+      {/* HOW */}
+      <section id="how" className="section">
+        <div className="wrap">
+          <h2 className="center">From address to answer in three steps</h2>
+          <div className="steps">
+            <div className="step"><span>1</span><div><b>Enter a property</b><p>Type any California address or APN, or drop a pin on the map.</p></div></div>
+            <div className="step"><span>2</span><div><b>K2 does the digging</b><p>It finds the exact parcel, queries FEMA and county hazard layers, and reads the zoning — automatically.</p></div></div>
+            <div className="step"><span>3</span><div><b>Get the report</b><p>A clear on-screen readout and a downloadable investor PDF — in under two minutes.</p></div></div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="cta">
+        <div className="wrap center">
+          <h2 style={{color:"#fff",marginBottom:14}}>Type an address. Get the report.</h2>
+          <p style={{color:"#cfe0f2",maxWidth:560,margin:"0 auto 26px"}}>Replace days of consultants and guesswork with a two-minute feasibility screen for any parcel in California.</p>
+          <Link className="btn btn-lg btn-white" href="/tool">Analyze a property →</Link>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="foot">
+        <div className="wrap footrow">
+          <div className="brand small">
+            <img src="/k2-logo.png" alt="K2" />
+            <span>K2 <b>Investment</b> Inc.</span>
+          </div>
+          <div className="fnote">Downtown Los Angeles · Serving California real estate for 30 years. This tool is a rapid feasibility screen, not an appraisal or a substitute for professional due diligence.</div>
+        </div>
+      </footer>
+    </main>
   );
 }
+
+const CSS = `
+:root{--ink:#43392f;--taupe:#6f6156;--blue:#2f74c0;--blue2:#1e5a9e;--sky:#eaf3fc;--cream:#faf8f4;--line:#ece6de;}
+*{box-sizing:border-box;margin:0;padding:0}
+main{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--cream);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+h1,h2,h3,h4{font-family:Georgia,"Times New Roman",serif;font-weight:700;letter-spacing:-.5px;color:var(--ink)}
+a{color:inherit;text-decoration:none}
+.btn{display:inline-block;background:var(--blue);color:#fff;font-weight:600;border-radius:10px;padding:11px 22px;transition:.15s;border:1px solid var(--blue)}
+.btn:hover{background:var(--blue2);border-color:var(--blue2)}
+.btn-sm{padding:8px 16px;font-size:14px}
+.btn-lg{padding:14px 28px;font-size:16px}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn-ghost:hover{background:#fff;border-color:var(--taupe)}
+.btn-white{background:#fff;color:var(--blue2);border-color:#fff}
+.btn-white:hover{background:#eef4fb}
+/* nav */
+.nav{position:sticky;top:0;z-index:50;background:rgba(250,248,244,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.navrow{display:flex;align-items:center;justify-content:space-between;height:66px}
+.brand{display:flex;align-items:center;gap:10px;font-family:Georgia,serif;font-size:19px;color:var(--ink)}
+.brand b{color:var(--blue)}
+.brand img{height:34px;width:34px;object-fit:contain}
+.brand.small{font-size:16px}.brand.small img{height:28px;width:28px}
+.navlinks{display:flex;align-items:center;gap:26px;font-size:15px;color:var(--taupe)}
+.navlinks a:hover{color:var(--ink)}
+/* hero */
+.hero{padding:70px 0 60px;background:radial-gradient(1200px 500px at 80% -10%,var(--sky),transparent 60%)}
+.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:54px;align-items:center}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:1.5px;color:var(--blue);margin-bottom:18px}
+h1{font-size:52px;line-height:1.08}
+h1 em{color:var(--blue);font-style:italic}
+.lead{margin:22px 0 28px;font-size:18px;line-height:1.6;color:var(--taupe);max-width:560px}
+.cta-row{display:flex;gap:14px;flex-wrap:wrap}
+.trust{margin-top:22px;font-size:13px;color:#9a8d80}
+/* hero card */
+.hero-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 30px 60px -30px rgba(67,57,47,.35)}
+.hc-head{display:flex;align-items:center;gap:8px;font-size:15px;padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.hc-dot{width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px #dcfce7}
+.hc-row{display:flex;justify-content:space-between;font-size:14px;padding:9px 0;border-bottom:1px solid #f5f1eb}
+.hc-row span{color:var(--taupe)}
+.accent{color:var(--blue)}.ok{color:#166534}.warn{color:#b45309}
+.hc-analysis{margin-top:12px;font-size:13px;line-height:1.55;color:#5b5148;font-style:italic;background:var(--sky);padding:12px 14px;border-radius:10px}
+.hc-foot{margin-top:8px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#a99c8e}
+/* strip */
+.strip{background:var(--ink);color:#efe9e2}
+.strip-grid{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:34px 24px;flex-wrap:wrap}
+.strip .big{font-family:Georgia,serif;font-size:30px;color:#fff}
+.strip p{font-size:14px;color:#c7bcae;margin-top:4px;max-width:230px}
+.strip .accent{color:#7db4ec}
+.strip .arrow{font-size:28px;color:#8a7c6d}
+.strip .hl .big{color:#7db4ec}
+/* sections */
+.section{padding:76px 0}
+.section.alt{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.center{text-align:center}
+h2{font-size:34px;line-height:1.2;max-width:760px;margin:0 auto}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:44px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:28px;transition:.15s}
+.card:hover{transform:translateY(-3px);box-shadow:0 18px 40px -24px rgba(67,57,47,.4)}
+.cn{font-family:Georgia,serif;font-size:15px;color:var(--blue);font-weight:700;margin-bottom:10px}
+.card h3{font-size:21px;margin-bottom:10px}
+.card p{font-size:15px;line-height:1.6;color:var(--taupe)}
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:36px}
+.ficon{width:46px;height:46px;border-radius:12px;background:var(--sky);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px}
+.feat h4{font-size:18px;margin-bottom:8px}
+.feat p{font-size:14.5px;line-height:1.6;color:var(--taupe)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:44px}
+.step{display:flex;gap:16px;align-items:flex-start}
+.step span{flex:none;width:38px;height:38px;border-radius:50%;background:var(--blue);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif}
+.step b{display:block;font-size:17px;margin-bottom:4px}
+.step p{font-size:14.5px;line-height:1.55;color:var(--taupe)}
+/* cta */
+.cta{background:linear-gradient(135deg,var(--blue2),#16406f);padding:74px 0}
+/* footer */
+.foot{background:var(--ink);color:#cdbfb0;padding:36px 0}
+.footrow{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.foot .brand{color:#fff}.foot .brand b{color:#7db4ec}
+.fnote{font-size:12.5px;color:#a4998b;max-width:560px;line-height:1.5}
+@media(max-width:860px){
+  .hero-grid{grid-template-columns:1fr;gap:36px}
+  h1{font-size:38px}h2{font-size:27px}
+  .cards,.feat-grid,.steps{grid-template-columns:1fr}
+  .navlinks a:not(.btn){display:none}
+  .strip .arrow{display:none}
+}
+`;

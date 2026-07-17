@@ -51,33 +51,39 @@ async function geocode(s:string){
 export async function GET(req:NextRequest){
   const sp=req.nextUrl.searchParams, s=(sp.get("q")||"").trim();
   if(s){
-    const county=bySlug(sp.get("county"))||COUNTIES[0], apn=isApn(s);
-    // gather ALL matching records (up to 25)
-    for(const src of county.sources){
-      try{
-        const where=apn?apnWhere(src,s):addrWhere(src,s);
-        if(!where)continue;
-        const feats=await q(src,{where,resultRecordCount:"25",orderByFields:src.addr[0]});
-        const matches=feats.map((f:any)=>rec(f,src,county.label)).filter(Boolean);
-        if(matches.length)return NextResponse.json({status:"ok",county:county.slug,label:county.label,matches});
-      }catch{}
+    const apn=isApn(s);
+    let county=bySlug(sp.get("county"));
+    let geo:{lat:number;lon:number}|null=null;
+    // No explicit county → geocode to detect which county this address is in.
+    if(!county && !apn){ geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`); if(geo){ county=route(geo.lon,geo.lat); } }
+    // 1) direct record match — in detected/given county, or (for APNs) across all live counties.
+    const cand = county ? [county] : COUNTIES;
+    for(const c of cand){
+      for(const src of c.sources){
+        try{
+          const where=apn?apnWhere(src,s):addrWhere(src,s);
+          if(!where)continue;
+          const feats=await q(src,{where,resultRecordCount:"25",orderByFields:src.addr[0]});
+          const matches=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean);
+          if(matches.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches});
+        }catch{}
+      }
     }
-    // fallback: geocode the address, then return ALL parcels near that point as candidates.
-    // Catches vacant/rural lots that carry NO address in the county record (e.g. undeveloped land).
-    const g=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, ${county.label} County, CA`);
-    if(g){
-      const gc=route(g.lon,g.lat)||county;
-      const d=0.008; // ~880m half-box around the geocoded point
-      const env={xmin:g.lon-d,ymin:g.lat-d,xmax:g.lon+d,ymax:g.lat+d,spatialReference:{wkid:4326}};
+    // 2) geocode → nearby parcels (catches vacant lots with no address on file)
+    if(!geo) geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
+    if(geo){
+      const gc=route(geo.lon,geo.lat);
+      if(!gc) return NextResponse.json({status:"expanding",message:`That address is in California but outside our live counties (Los Angeles & Napa). Full statewide coverage is rolling out.`});
+      const d=0.008, env={xmin:geo.lon-d,ymin:geo.lat-d,xmax:geo.lon+d,ymax:geo.lat+d,spatialReference:{wkid:4326}};
       for(const src of gc.sources){try{
         const feats=await q(src,{geometry:JSON.stringify(env),geometryType:"esriGeometryEnvelope",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"25"});
-        const withD=(feats.map((f:any)=>{const r=rec(f,src,gc.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((c:any)=>{cx+=c[0];cy+=c[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-g.lon)**2+(cy-g.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
+        const withD=(feats.map((f:any)=>{const r=rec(f,src,gc.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((c:any)=>{cx+=c[0];cy+=c[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-geo!.lon)**2+(cy-geo!.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
         withD.sort((a,b)=>a.dist-b.dist);
         const m=withD.map(x=>x.r);
         if(m.length)return NextResponse.json({status:"ok",match:"nearby",county:gc.slug,label:gc.label,matches:m});
       }catch{}}
     }
-    return NextResponse.json({status:"not_found",message:`No parcel record for "${s}". Try just the street name, an APN, or tap the map.`});
+    return NextResponse.json({status:"not_found",message:`No parcel found for "${s}". Try the full street address or an APN.`});
   }
   const lat=parseFloat(sp.get("lat")||""),lon=parseFloat(sp.get("lon")||"");
   if(Number.isNaN(lat)||Number.isNaN(lon))return NextResponse.json({status:"error",message:"q or lat/lon required"},{status:400});
