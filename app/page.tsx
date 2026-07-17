@@ -40,6 +40,7 @@ const RASTER_STYLE = {
 
 type Parcel = {
   status: string;
+  match?: string;
   county?: string;
   label?: string;
   apn?: string;
@@ -148,24 +149,28 @@ export default function Home() {
   async function searchAddress() {
     const q = address.trim();
     if (!q) return;
-    const withRegion = /\bCA\b|California|County/i.test(q)
-      ? q
-      : `${q}, ${COUNTY_VIEWS[county].hint}`;
     setLoading(true);
     setParcel(null);
-    setStatus("Finding address…");
+    setStatus("Searching parcel records…");
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(withRegion)}`);
-      const geo = await res.json();
-      if (geo.status !== "ok") {
-        setStatus(geo.message || "Address not found.");
-        setLoading(false);
-        return;
+      const res = await fetch(
+        `/api/parcel?q=${encodeURIComponent(q)}&county=${county}`
+      );
+      const data: Parcel = await res.json();
+      setParcel(data);
+      drawParcel(data);
+      if (data.status === "ok") {
+        setStatus(
+          data.match === "approximate"
+            ? `Nearest parcel to "${q}" — verify it's the right lot.`
+            : `${data.label} County parcel found.`
+        );
+      } else {
+        setStatus(data.message || "No parcel found.");
       }
-      mapRef.current?.flyTo({ center: [geo.lon, geo.lat], zoom: 17 });
-      await lookup(geo.lat, geo.lon);
     } catch {
-      setStatus("Address lookup failed — try again.");
+      setStatus("Search failed — try again.");
+    } finally {
       setLoading(false);
     }
   }
