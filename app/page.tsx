@@ -1,10 +1,5 @@
 import Link from "next/link";
 
-export const metadata = {
-  title: "K2 Investment — Land Feasibility, Automated",
-  description: "Instant parcel feasibility for California real estate. What you can build, what could stop the deal, and whether it's worth it — in under two minutes.",
-};
-
 export default function Landing() {
   return (
     <main>
