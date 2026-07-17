@@ -41,7 +41,16 @@ const COUNTIES: County[] = [
     label: "Napa",
     fips: "06055",
     bbox: [-122.65, 38.15, -122.06, 38.87],
-    sources: [], // exact endpoint pending confirmation
+    sources: [
+      {
+        // Napa County Assessor public parcel fabric (verified live, no key).
+        // Layer 0 "Parcels", native SR 3857, MaxRecordCount 1000.
+        queryUrl:
+          "https://gis.napacounty.gov/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query",
+        apnFields: ["asmtwithdash", "asmt"],
+        addressFields: ["streetaddr"],
+      },
+    ],
   },
 ];
 
