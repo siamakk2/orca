@@ -2,13 +2,18 @@
   "name": "orca",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
   "dependencies": {
+    "@turf/area": "^7.2.0",
+    "jspdf": "^2.5.2",
+    "maplibre-gl": "^4.7.1",
     "next": "16.2.10",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "maplibre-gl": "^4.7.1",
-    "@turf/area": "^7.2.0"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@types/node": "^20",
