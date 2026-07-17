@@ -48,11 +48,16 @@ function pick(attrs: Record<string, any>, names: string[]) {
 }
 async function atPoint(url: string, lon: number, lat: number, fields = "*") {
   const p = new URLSearchParams({ geometry: JSON.stringify({ x: lon, y: lat, spatialReference: { wkid: 4326 } }), geometryType: "esriGeometryPoint", inSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: fields, returnGeometry: "false", f: "json" });
-  const r = await fetch(`${url}?${p}`, { cache: "no-store" });
+  const r = await fetch(`${url}?${p}`, { cache: "no-store", signal: AbortSignal.timeout(13000), headers: { "User-Agent": "K2-Investment/1.0 (parcel feasibility)" } });
   if (!r.ok) throw new Error("HTTP " + r.status);
   const d = await r.json();
   if (d.error) throw new Error(d.error?.message || "GIS error");
   return d.features || [];
+}
+async function atPointRetry(url: string, lon: number, lat: number, fields = "*") {
+  let last: unknown;
+  for (let i = 0; i < 2; i++) { try { return await atPoint(url, lon, lat, fields); } catch (e) { last = e; } }
+  throw last;
 }
 
 export async function GET(req: NextRequest) {
@@ -84,10 +89,10 @@ export async function GET(req: NextRequest) {
 
   /* --- FEMA flood --- */
   try {
-    const f = (await atPoint(FEMA, lon, lat, "FLD_ZONE,SFHA_TF,ZONE_SUBTY"))[0];
-    if (!f) out.risk.flood = { level: "green", text: "Not in a mapped flood zone" };
-    else { const z = f.attributes.FLD_ZONE, sfha = f.attributes.SFHA_TF; const hi = sfha === "T" || /^(A|V)/.test(z || ""); out.risk.flood = { level: hi ? "red" : "green", text: hi ? `Zone ${z} — Special Flood Hazard` : `Zone ${z || "X"} — minimal risk` }; }
-  } catch { out.risk.flood = { level: "gray", text: "FEMA unavailable — verify" }; }
+    const f = (await atPointRetry(FEMA, lon, lat, "FLD_ZONE,SFHA_TF,ZONE_SUBTY"))[0];
+    if (!f) out.risk.flood = { level: "green", text: "Zone X — not in a mapped flood zone" };
+    else { const z = f.attributes.FLD_ZONE, sfha = f.attributes.SFHA_TF; const hi = sfha === "T" || /^(A|V)/.test(z || ""); out.risk.flood = { level: hi ? "red" : "green", text: hi ? `Zone ${z} — Special Flood Hazard Area` : `Zone ${z || "X"} — minimal risk` }; }
+  } catch { out.risk.flood = { level: "gray", text: "FEMA timed out — retry or verify" }; }
 
   /* --- fire --- */
   if (ov.fire) { try {

@@ -51,8 +51,8 @@ export default function Home(){
     m.on("load",()=>{
       m.resize();setReady(true);
       m.addSource("p",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
-      m.addLayer({id:"pf",type:"fill",source:"p",paint:{"fill-color":"#06b6d4","fill-opacity":0.28}});
-      m.addLayer({id:"pl",type:"line",source:"p",paint:{"line-color":"#0e7490","line-width":2.5}});
+      m.addLayer({id:"pf",type:"fill",source:"p",paint:{"fill-color":"#2563eb","fill-opacity":0.28}});
+      m.addLayer({id:"pl",type:"line",source:"p",paint:{"line-color":"#1e40af","line-width":2.5}});
     });
     m.on("error",e=>console.warn("map",e?.error?.message||e));
     m.on("click",e=>{void lookupPoint(e.lngLat.lat,e.lngLat.lng)});
@@ -106,23 +106,28 @@ export default function Home(){
     const vLand=V(["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"]);
     const uCode=pickVal(sel.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
     const bb=report?.buildability||{}, rr=report?.risk||{};
-    doc.setFillColor(15,23,42);doc.rect(0,0,W,26,"F");
-    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(20);doc.text("ORCA",M,16);
-    doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(125,211,252);doc.text("PARCEL FEASIBILITY REPORT",M+21,16);
-    doc.setTextColor(148,163,184);doc.setFontSize(8);doc.text(new Date().toLocaleDateString(),W-M,16,{align:"right"});
+    try{
+      const blob=await (await fetch("/k2-logo.png")).blob();
+      const durl:string=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result as string);r.readAsDataURL(blob)});
+      doc.addImage(durl,"PNG",M,6,15,15);
+    }catch{}
+    doc.setTextColor(15,23,42);doc.setFont("helvetica","bold");doc.setFontSize(17);doc.text("K2 INVESTMENT",M+19,13.5);
+    doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(37,99,235);doc.text("PARCEL FEASIBILITY REPORT",M+19,19);
+    doc.setTextColor(148,163,184);doc.setFontSize(8);doc.text(new Date().toLocaleDateString(),W-M,13.5,{align:"right"});
+    doc.setDrawColor(226,232,240);doc.setLineWidth(0.4);doc.line(M,25,W-M,25);
     y=38;
     doc.setTextColor(15,23,42);doc.setFont("helvetica","bold");doc.setFontSize(15);
     doc.text(sel.address||"Vacant parcel (no address on file)",M,y);
     drawShape(doc,sel.geometry,W-M-46,30,46,34);
     y+=7;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(100,116,139);
     doc.text(`APN ${sel.apn}    ${sel.label} County    ${sel.acreage} acres`,M,y);
-    const sec=(t:string)=>{y+=8;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(8,145,178);doc.text(t,M,y);y+=6.5;doc.setFont("helvetica","normal");doc.setFontSize(10)};
+    const sec=(t:string)=>{y+=8;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text(t,M,y);y+=6.5;doc.setFont("helvetica","normal");doc.setFontSize(10)};
     const row=(k:string,v:any,c?:number[])=>{doc.setTextColor(100,116,139);doc.setFont("helvetica","normal");doc.text(k,M,y);const col=c||[15,23,42];doc.setTextColor(col[0],col[1],col[2]);doc.setFont("helvetica","bold");doc.text(String(v),W-M,y,{align:"right"});y+=6.6};
     const RC:Record<string,number[]>={green:[22,101,52],amber:[146,64,14],red:[153,27,27],gray:[100,116,139]};
     sec("1.  What You Can Build");
     row("Zoning district",bb.code||"Not returned");
     if(bb.name)row("District",bb.name); if(bb.use)row("Primary use",bb.use); if(bb.minLot)row("Min lot / density",bb.minLot);
-    row("Max dwellings (by density)",bb.maxUnits!=null?bb.maxUnits:"—",[8,145,178]);
+    row("Max dwellings (by density)",bb.maxUnits!=null?bb.maxUnits:"—",[37,99,235]);
     if(bb.envelope)row("Est. buildable footprint",bb.envelope.toLocaleString()+" sf");
     row("ADU potential","1 ADU + 1 JADU likely (CA state law)");
     sec("2.  What Could Stop a Deal");
@@ -145,23 +150,24 @@ export default function Home(){
 
   const S=(bg:string)=>({display:"inline-block",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,background:BC[bg]||BC.gray,color:BT[bg]||BT.gray});
   const kv=(k:string,v:any)=>(<div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #f4f6f9",fontSize:13}}><span style={{color:"#64748b"}}>{k}</span><span style={{fontWeight:600,textAlign:"right"}}>{v}</span></div>);
-  const H=(t:string)=>(<div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#0891b2",margin:"16px 0 4px"}}>{t}</div>);
+  const H=(t:string)=>(<div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#1d4ed8",margin:"16px 0 4px"}}>{t}</div>);
 
   return (
     <div style={{position:"relative",height:"100vh",width:"100vw",overflow:"hidden",fontFamily:"system-ui,-apple-system,sans-serif"}}>
       <div ref={boxRef} style={{position:"absolute",inset:0,background:"#eef2f5"}}/>
       <div style={{position:"absolute",top:0,left:0,right:0,zIndex:10,display:"flex",flexWrap:"wrap",gap:8,padding:12,alignItems:"flex-start",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,background:"#0f172a",borderRadius:12,padding:"10px 16px",boxShadow:"0 4px 14px rgba(0,0,0,.2)"}}>
-          <span style={{color:"#fff",fontWeight:700,fontSize:18}}>Orca</span>
-          <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:"1px solid #334155"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,background:"#fff",borderRadius:12,padding:"7px 14px",boxShadow:"0 4px 14px rgba(0,0,0,.15)"}}>
+          <img src="/k2-logo.png" alt="K2" style={{height:30,width:30,objectFit:"contain"}}/>
+          <span style={{color:"#0f172a",fontWeight:800,fontSize:16,letterSpacing:-.3}}>K2&nbsp;<span style={{color:"#2563eb"}}>Investment</span></span>
+          <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:"1px solid #cbd5e1",marginLeft:2}}>
             {(["los_angeles","napa"] as const).map(c=>(
-              <button key={c} onClick={()=>jump(c)} style={{padding:"5px 12px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:county===c?"#06b6d4":"transparent",color:county===c?"#fff":"#cbd5e1"}}>{VIEWS[c].label}</button>
+              <button key={c} onClick={()=>jump(c)} style={{padding:"5px 12px",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:county===c?"#2563eb":"transparent",color:county===c?"#fff":"#475569"}}>{VIEWS[c].label}</button>
             ))}
           </div>
         </div>
         <div style={{display:"flex",gap:8,background:"#fff",borderRadius:12,padding:8,boxShadow:"0 4px 14px rgba(0,0,0,.15)",flex:"1 1 320px",maxWidth:460}}>
           <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")search()}} placeholder={`Address or APN in ${VIEWS[county].label}…`} style={{flex:1,minWidth:0,border:"none",outline:"none",fontSize:14,padding:"8px 10px",color:"#0f172a"}}/>
-          <button onClick={search} disabled={busy} style={{border:"none",borderRadius:8,background:"#06b6d4",color:"#fff",fontWeight:600,fontSize:14,padding:"8px 16px",cursor:"pointer",opacity:busy?.5:1}}>{busy?"…":"Search"}</button>
+          <button onClick={search} disabled={busy} style={{border:"none",borderRadius:8,background:"#2563eb",color:"#fff",fontWeight:600,fontSize:14,padding:"8px 16px",cursor:"pointer",opacity:busy?.5:1}}>{busy?"…":"Search"}</button>
         </div>
       </div>
 
@@ -185,12 +191,12 @@ export default function Home(){
         <div style={{position:"absolute",top:72,left:12,zIndex:10,width:380,maxWidth:"94vw",maxHeight:"84vh",overflowY:"auto",background:"#fff",borderRadius:14,boxShadow:"0 10px 30px rgba(0,0,0,.2)"}}>
           <div style={{padding:"14px 18px",borderBottom:"1px solid #eef2f6",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div>
-              <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#0891b2"}}>{sel.label} County · Feasibility</div>
+              <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#1d4ed8"}}>{sel.label} County · Feasibility</div>
               <div style={{fontSize:18,fontWeight:800,marginTop:2}}>{sel.address||"(vacant — no address on file)"}</div>
               <div style={{fontSize:12,color:"#64748b",fontFamily:"monospace",marginTop:2}}>APN {sel.apn} · {sel.acreage} acres</div>
             </div>
             <div style={{display:"flex",gap:6,flexShrink:0}}>
-              <button onClick={downloadPDF} disabled={repBusy} title="Download investor PDF" style={{border:"none",background:"#0891b2",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,opacity:repBusy?.5:1}}>PDF</button>
+              <button onClick={downloadPDF} disabled={repBusy} title="Download investor PDF" style={{border:"none",background:"#1d4ed8",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,opacity:repBusy?.5:1}}>PDF</button>
               <button onClick={()=>{setSel(null);setReport(null);draw(null);setMsg("Search an address or APN, or tap the map.")}} style={{border:"none",background:"#f1f5f9",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>×</button>
             </div>
           </div>
@@ -202,7 +208,7 @@ export default function Home(){
               {b?.name && kv("District", b.name)}
               {b?.use && kv("Primary use", b.use)}
               {b?.minLot && kv("Min lot / density", b.minLot)}
-              {kv("Max dwellings (by density)", <span style={{fontSize:18,fontWeight:800,color:"#0891b2"}}>{b?.maxUnits!=null?b.maxUnits:"—"}</span>)}
+              {kv("Max dwellings (by density)", <span style={{fontSize:18,fontWeight:800,color:"#1d4ed8"}}>{b?.maxUnits!=null?b.maxUnits:"—"}</span>)}
               {b?.envelope && kv("Est. buildable footprint", b.envelope.toLocaleString()+" sf")}
               {kv("ADU potential", <span style={S("green")}>1 ADU + 1 JADU likely</span>)}
               {b?.cite && <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Density/setbacks summarized from {b.cite}; confirm overlays at permitting.</div>}
