@@ -1,0 +1,37 @@
+name: county-test
+on:
+  workflow_dispatch:
+    inputs:
+      q:
+        description: "Address to test"
+        required: false
+        default: "55 Longhorn Ridge Rd Napa CA 94558"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Napa raw street query (LONGHORN)
+        run: |
+          echo "=== NAPA streetaddr LIKE %LONGHORN% ==="
+          curl -s "https://gis.napacounty.gov/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query" \
+            --data-urlencode "where=UPPER(streetaddr) LIKE '%LONGHORN%'" \
+            --data-urlencode "outFields=streetaddr,asmt,asmtwithdash,gis_acres" \
+            --data-urlencode "returnGeometry=false" \
+            --data-urlencode "f=json" | head -c 3000; echo
+      - name: Napa raw street query (plain LIKE no UPPER)
+        run: |
+          echo "=== NAPA streetaddr LIKE %Longhorn% (no UPPER) ==="
+          curl -s "https://gis.napacounty.gov/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query" \
+            --data-urlencode "where=streetaddr LIKE '%Longhorn%'" \
+            --data-urlencode "outFields=streetaddr,asmtwithdash" \
+            --data-urlencode "returnGeometry=false" \
+            --data-urlencode "f=json" | head -c 3000; echo
+      - name: Census geocode of the address
+        run: |
+          echo "=== CENSUS GEOCODE ==="
+          curl -s "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote('${{ github.event.inputs.q }}'))")&benchmark=Public_AR_Current&format=json" | head -c 2000; echo
+      - name: Live app end-to-end
+        run: |
+          echo "=== LIVE APP /api/parcel ==="
+          curl -s -G "https://orca-siamakk2-8490s-projects.vercel.app/api/parcel" \
+            --data-urlencode "q=${{ github.event.inputs.q }}" | head -c 3000; echo
