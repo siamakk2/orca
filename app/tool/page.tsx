@@ -44,6 +44,10 @@ export default function Home(){
   const [analysis,setAnalysis]=useState<string|null>(null);
   const [anaBusy,setAnaBusy]=useState(false);
   const [aiFlag,setAiFlag]=useState(false);
+  const [activity,setActivity]=useState<string|null>(null);
+  const [actBusy,setActBusy]=useState(false);
+  const [actEnabled,setActEnabled]=useState(true);
+  const [actSources,setActSources]=useState<string[]>([]);
   const [ready,setReady]=useState(false);
 
   useEffect(()=>{
@@ -92,6 +96,14 @@ export default function Home(){
       const aj=await ar.json();setAnalysis(aj.narrative||null);setAiFlag(!!aj.ai);
     }catch{setAnalysis(null)}
     finally{setAnaBusy(false)}
+    // Area development activity (web-searched)
+    setActBusy(true);setActivity(null);
+    try{
+      const r=await fetch("/api/activity",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,county:mt.label,apn:mt.apn})});
+      const aj=await r.json();
+      setActEnabled(aj.enabled!==false);setActivity(aj.briefing||null);setActSources(aj.sources||[]);
+    }catch{setActivity(null)}
+    finally{setActBusy(false)}
   }
 
   async function run(url:string,label:string){
@@ -157,6 +169,11 @@ export default function Home(){
     row("Development capacity",bb.maxUnits!=null?`${bb.maxUnits} dwelling${bb.maxUnits===1?"":"s"} by right`:"—");
     row("Assessed value",vAssessed||"Not published in public layer");
     row("Assessed land value",vLand||"Not published in public layer");
+    if(analysis && activity){
+      sec("4.  What's Happening Nearby");
+      doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);
+      doc.splitTextToSize(activity,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5});
+    }
     if(y>270){doc.addPage();y=20}else{y+=6}
     doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=5;
     doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(148,163,184);
@@ -253,6 +270,12 @@ export default function Home(){
             {kv("Assessed land value", land||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
             {val && kv("Value / acre", money((Number(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]))||0)/sel.acreage))}
             <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Public assessor values trail market and some counties don't publish them here. Size the opportunity from the max-dwellings figure × achievable per-unit value from comps.</div>
+
+            {H("④ What's happening nearby")}
+            {!actEnabled ? <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5}}>Area development intelligence turns on with an Anthropic API key — it web-searches for nearby data centers, industrial, and commercial projects and reads what they mean for land value here.</div>
+              : actBusy && !activity ? <div style={{fontSize:13,color:"#64748b"}}>Scanning the area for major developments…</div>
+              : activity ? <><div style={{fontSize:13,lineHeight:1.6,color:"#1e293b",whiteSpace:"pre-wrap"}}>{activity}</div>{actSources.length>0 && <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Sources: {actSources.join(" · ")}</div>}</>
+              : <div style={{fontSize:12,color:"#94a3b8"}}>No notable nearby development activity found.</div>}
 
             <div style={{marginTop:16,padding:"10px 12px",background:"#f8fafc",borderRadius:10,fontSize:11,color:"#94a3b8",lineHeight:1.5}}>Zoning rules are summarized for common districts and must be confirmed against the county code and overlays (setback, hillside, SEA). Not an appraisal — a fast go/no-go, not a substitute for due diligence.</div>
           </div>
