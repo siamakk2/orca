@@ -48,6 +48,9 @@ export default function Home(){
   const [actBusy,setActBusy]=useState(false);
   const [actEnabled,setActEnabled]=useState(true);
   const [actSources,setActSources]=useState<string[]>([]);
+  const [zoning,setZoning]=useState<any>(null);
+  const [znBusy,setZnBusy]=useState(false);
+  const [znSources,setZnSources]=useState<string[]>([]);
   const [ready,setReady]=useState(false);
   const [embed,setEmbed]=useState(false);
   const [brand,setBrand]=useState<string>("");
@@ -101,14 +104,16 @@ export default function Home(){
       const aj=await ar.json();setAnalysis(aj.narrative||null);setAiFlag(!!aj.ai);
     }catch{setAnalysis(null)}
     finally{setAnaBusy(false)}
-    // Area development activity (web-searched)
+    // Area development activity + zoning intelligence (web-searched, in parallel)
     setActBusy(true);setActivity(null);
-    try{
-      const r=await fetch("/api/activity",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,county:mt.label,apn:mt.apn})});
-      const aj=await r.json();
-      setActEnabled(aj.enabled!==false);setActivity(aj.briefing||null);setActSources(aj.sources||[]);
-    }catch{setActivity(null)}
-    finally{setActBusy(false)}
+    setZnBusy(true);setZoning(null);setZnSources([]);
+    const actP=fetch("/api/activity",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,county:mt.label,apn:mt.apn})})
+      .then(r=>r.json()).then(aj=>{setActEnabled(aj.enabled!==false);setActivity(aj.briefing||null);setActSources(aj.sources||[])})
+      .catch(()=>setActivity(null)).finally(()=>setActBusy(false));
+    const znP=fetch("/api/zoning",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,county:mt.label,apn:mt.apn,acreage:mt.acreage,zoning:mt.zoning})})
+      .then(r=>r.json()).then(zj=>{setZoning(zj.report||null);setZnSources(zj.sources||[])})
+      .catch(()=>setZoning(null)).finally(()=>setZnBusy(false));
+    await Promise.allSettled([actP,znP]);
   }
 
   async function run(url:string,label:string){
@@ -180,6 +185,17 @@ export default function Home(){
     row("Max dwellings (by density)",bb.maxUnits!=null?bb.maxUnits:"—",[37,99,235]);
     if(bb.envelope)row("Est. buildable footprint",bb.envelope.toLocaleString()+" sf");
     row("ADU potential","1 ADU + 1 JADU likely (CA state law)");
+    if(zoning){
+      sec("Zoning & Entitlement Intelligence"+(zoning.confidence?`  (${zoning.confidence} confidence)`:""));
+      if(zoning.zone)row("Governing zone",zoning.zone);
+      if(zoning.jurisdiction)row("Jurisdiction",zoning.jurisdiction);
+      if(zoning.summary){doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);doc.splitTextToSize(zoning.summary,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5})}
+      if(Array.isArray(zoning.standards))zoning.standards.filter((s:any)=>s&&s.value).forEach((s:any)=>row(s.label,String(s.value)));
+      const para=(lab:string,txt:string)=>{if(!txt)return;if(y>270){doc.addPage();y=20}y+=1.5;doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(124,58,237);doc.text(lab,M,y);y+=5;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);doc.splitTextToSize(txt,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5})};
+      para("ADUs",zoning.adu);para("Upside",zoning.opportunities);para("Process",zoning.process);
+      if(Array.isArray(zoning.flags)&&zoning.flags.length){if(y>268){doc.addPage();y=20}y+=1.5;doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(194,65,12);doc.text("Could stop or delay a deal",M,y);y+=5;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(154,52,18);zoning.flags.forEach((f:string)=>{doc.splitTextToSize("- "+f,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5})})}
+      if(znSources&&znSources.length){if(y>274){doc.addPage();y=20}doc.setFont("helvetica","italic");doc.setFontSize(7.5);doc.setTextColor(148,163,184);doc.text("Zoning sources: "+znSources.join(", "),M,y);y+=5}
+    }
     sec("2.  What Could Stop a Deal");
     ([["Flood zone (FEMA)","flood"],["Fire hazard","fire"],["Williamson Act","williamson"],["Terrain","terrain"]] as const).forEach(([lab,k])=>{const r=rr[k as string];row(lab,r?r.text:"—",r?RC[r.level]:undefined)});
     sec("3.  Is It Worth It");
@@ -311,6 +327,38 @@ export default function Home(){
               {kv("ADU potential", <span style={S("green")}>1 ADU + 1 JADU likely</span>)}
               {b?.cite && <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Density/setbacks summarized from {b.cite}; confirm overlays at permitting.</div>}
             </>)}
+
+            <div style={{marginTop:16,padding:"14px 16px",background:"linear-gradient(135deg,#faf5ff,#f5f3ff)",border:"1px solid #e9d5ff",borderRadius:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#7c3aed",marginBottom:8}}>
+                <span>⬡ Zoning &amp; Entitlement Intelligence</span>
+                <span style={{fontSize:9,background:"#7c3aed",color:"#fff",padding:"1px 6px",borderRadius:999}}>AI</span>
+                {zoning?.confidence && <span style={{fontSize:9,marginLeft:"auto",fontWeight:700,padding:"1px 7px",borderRadius:999,background:zoning.confidence==="high"?"#dcfce7":zoning.confidence==="medium"?"#fef3c7":"#f1f5f9",color:zoning.confidence==="high"?"#15803d":zoning.confidence==="medium"?"#b45309":"#64748b"}}>{zoning.confidence} confidence</span>}
+              </div>
+              {znBusy && !zoning ? <div style={{fontSize:13,color:"#64748b"}}>Researching the governing zoning code, general plan, and state overrides…</div>
+                : zoning ? <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:700,color:"#1e293b"}}>{zoning.zone||"Zone not confirmed"}</div>
+                      {zoning.jurisdiction && <div style={{fontSize:12,color:"#7c3aed"}}>{zoning.jurisdiction}</div>}
+                    </div>
+                    {zoning.summary && <div style={{fontSize:13,lineHeight:1.6,color:"#1e293b"}}>{zoning.summary}</div>}
+                    {Array.isArray(zoning.permittedUses)&&zoning.permittedUses.length>0 && <div>
+                      <div style={{fontSize:10,fontWeight:700,letterSpacing:.4,textTransform:"uppercase",color:"#94a3b8"}}>Permitted uses</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:5}}>{zoning.permittedUses.map((u:string,i:number)=><span key={i} style={{fontSize:11,background:"#fff",border:"1px solid #e9d5ff",color:"#334155",padding:"3px 9px",borderRadius:999}}>{u}</span>)}</div>
+                    </div>}
+                    {Array.isArray(zoning.standards)&&zoning.standards.filter((s:any)=>s?.value).length>0 && <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                      {zoning.standards.filter((s:any)=>s?.value).map((s:any,i:number)=>kv(s.label,String(s.value)))}
+                    </div>}
+                    {zoning.adu && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#7c3aed"}}>ADUs — </b>{zoning.adu}</div>}
+                    {zoning.opportunities && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#7c3aed"}}>Upside — </b>{zoning.opportunities}</div>}
+                    {zoning.process && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#7c3aed"}}>Process — </b>{zoning.process}</div>}
+                    {Array.isArray(zoning.flags)&&zoning.flags.length>0 && <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 11px"}}>
+                      <div style={{fontSize:10.5,fontWeight:800,letterSpacing:.3,textTransform:"uppercase",color:"#c2410c",marginBottom:4}}>Could stop or delay a deal</div>
+                      {zoning.flags.map((f:string,i:number)=><div key={i} style={{fontSize:12,color:"#9a3412",lineHeight:1.5}}>• {f}</div>)}
+                    </div>}
+                    {znSources.length>0 && <div style={{fontSize:11,color:"#a78bda"}}>Sources: {znSources.join(" · ")}</div>}
+                  </div>
+                : <div style={{fontSize:12.5,color:"#64748b",lineHeight:1.55}}>Couldn't pin the exact governing zone from public sources for this parcel — treat zoning as unconfirmed and verify the district and standards directly with the planning department. (Turns on with an Anthropic API key.)</div>}
+            </div>
 
             {H("② What could stop a deal")}
             {["flood","fire","williamson","terrain"].map(key=>{

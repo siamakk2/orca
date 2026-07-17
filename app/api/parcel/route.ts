@@ -82,7 +82,10 @@ function addrWhere(src:Src,s:string){
   if(!key&&!num)return null;
   if(src.num&&src.num.length){
     const parts:string[]=[];
-    if(num)parts.push("("+src.num.map(f=>`${f}='${num}'`).join(" OR ")+")");
+    if(num){
+      const nv=[...new Set([num,"0"+num,"00"+num,"000"+num])];
+      parts.push("("+src.num.flatMap(f=>nv.map(n=>`${f}='${n}'`)).join(" OR ")+")");
+    }
     if(key)parts.push("("+src.addr.map(f=>`UPPER(${f}) LIKE '%${key}%'`).join(" OR ")+")");
     return parts.length?parts.join(" AND "):null;
   }
