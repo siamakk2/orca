@@ -82,6 +82,22 @@ export async function GET(req:NextRequest){
   const sp=req.nextUrl.searchParams, s=(sp.get("q")||"").trim();
   if(s){
     const apn=isApn(s);
+    if(sp.get("debug")==="1"){
+      const out:any={ q:s, isApn:apn, regridConfigured:!!REGRID };
+      if(REGRID){
+        try{
+          const query=apn?s:(/CA\b|California/i.test(s)?s:`${s}, CA`);
+          const u="https://app.regrid.com/api/v1/search.json?"+new URLSearchParams({query,limit:"3",token:REGRID});
+          const r=await fetch(u,{cache:"no-store",signal:AbortSignal.timeout(15000)});
+          out.regrid={httpStatus:r.status};
+          const txt=await r.text();
+          try{ const d=JSON.parse(txt); const arr=(d.results||d.parcels?.features||d.features||[]); out.regrid.resultCount=arr.length; out.regrid.firstKeys=arr[0]?Object.keys(arr[0]):null; out.regrid.firstFieldKeys=arr[0]?.properties?.fields?Object.keys(arr[0].properties.fields).slice(0,20):null; out.regrid.parsedMatches=arr.map(regridRec).filter(Boolean).length; }
+          catch{ out.regrid.bodyPreview=txt.slice(0,500); }
+        }catch(e:any){ out.regrid={error:String(e?.message||e)}; }
+      }
+      try{ const g=await geocode(/CA\b|California/i.test(s)?s:`${s}, CA`); out.geocode=g; out.detectedCounty=g?(route(g.lon,g.lat)?.slug||"outside_LA_Napa"):"geocode_failed"; }catch(e:any){ out.geocode={error:String(e?.message||e)}; }
+      return NextResponse.json(out);
+    }
     // Statewide provider (Regrid) first when configured
     if(REGRID){
       try{
