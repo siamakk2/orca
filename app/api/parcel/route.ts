@@ -140,29 +140,31 @@ export async function GET(req:NextRequest){
       }catch{} } }
     }
 
-    // ---- Address search: geocode, then read the exact parcel under that point ----
+    // ---- Address search: authoritative house-number match first, then geocoded point ----
     let geo:{lat:number;lon:number}|null=null;
     if(!apn){
       geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
       const near = geo ? routeAll(geo.lon,geo.lat) : [];
+      // when the geocoder can't place a rural/private road, still try every county the words hint at
+      const tryC = near.length ? near : COUNTIES;
 
-      // 1) exact parcel containing the geocoded point (schema-independent, most reliable)
-      if(geo){
-        const pt={x:geo.lon,y:geo.lat,spatialReference:{wkid:4326}};
-        for(const c of near){ for(const src of c.sources){ try{
-          const feats=await q(src,{geometry:JSON.stringify(pt),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"5"});
-          const m=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean);
-          if(m.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches:m.slice(0,12)});
-        }catch{} } }
-      }
-
-      // 2) text match on the street address (handles APN-less lookups the geocoder missed)
-      for(const c of near){ for(const src of c.sources){ try{
+      // 1) exact house-number + street match on the county's own address field (most authoritative)
+      for(const c of tryC){ for(const src of c.sources){ try{
         const where=addrWhere(src,s); if(!where)continue;
         const feats=await q(src,{where,resultRecordCount:"12",orderByFields:src.addr[0]});
         const matches=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean).slice(0,12);
         if(matches.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches});
       }catch{} } }
+
+      // 2) exact parcel sitting under the geocoded point (catches vacant land the address field misses)
+      if(geo){
+        const pt={x:geo.lon,y:geo.lat,spatialReference:{wkid:4326}};
+        for(const c of near){ for(const src of c.sources){ try{
+          const feats=await q(src,{geometry:JSON.stringify(pt),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"5"});
+          const m=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean);
+          if(m.length)return NextResponse.json({status:"ok",match:"point",county:c.slug,label:c.label,matches:m.slice(0,12)});
+        }catch{} } }
+      }
 
       // 3) nearby parcels (vacant land with no address on file)
       if(geo){
