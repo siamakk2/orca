@@ -35,7 +35,7 @@ async function q(src:Src,extra:Record<string,string>){
 function rec(f:any,src:Src,label:string){
   if(!f?.geometry?.rings)return null;
   const g=rings2geo(f.geometry.rings);
-  return {apn:first(f.attributes||{},src.apn)||"—",address:first(f.attributes||{},src.addr)||"",acreage:acres(g),label,geometry:g};
+  return {apn:first(f.attributes||{},src.apn)||"—",address:first(f.attributes||{},src.addr)||"",acreage:acres(g),label,geometry:g,attrs:f.attributes||{}};
 }
 
 const SUF=new Set(["RD","ROAD","ST","STREET","AVE","AVENUE","BLVD","DR","DRIVE","LN","LANE","WAY","CT","COURT","PL","PLACE","CIR","CIRCLE","TER","HWY","PKWY","TRL","N","S","E","W"]);
