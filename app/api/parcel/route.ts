@@ -89,13 +89,25 @@ export async function GET(req:NextRequest){
           const query=apn?s:(/CA\b|California/i.test(s)?s:`${s}, CA`);
           const u="https://app.regrid.com/api/v1/search.json?"+new URLSearchParams({query,limit:"3",token:REGRID});
           const r=await fetch(u,{cache:"no-store",signal:AbortSignal.timeout(15000)});
-          out.regrid={httpStatus:r.status};
+          out.searchV1={httpStatus:r.status};
           const txt=await r.text();
-          try{ const d=JSON.parse(txt); const arr=(d.results||d.parcels?.features||d.features||[]); out.regrid.resultCount=arr.length; out.regrid.firstKeys=arr[0]?Object.keys(arr[0]):null; out.regrid.firstFieldKeys=arr[0]?.properties?.fields?Object.keys(arr[0].properties.fields).slice(0,20):null; out.regrid.parsedMatches=arr.map(regridRec).filter(Boolean).length; }
-          catch{ out.regrid.bodyPreview=txt.slice(0,500); }
-        }catch(e:any){ out.regrid={error:String(e?.message||e)}; }
+          try{ const d=JSON.parse(txt); out.searchV1.topKeys=Object.keys(d); const arr=(d.results||d.parcels?.features||d.features||[]); out.searchV1.count=arr.length; }
+          catch{}
+          out.searchV1.bodyPreview=txt.slice(0,300);
+        }catch(e:any){ out.searchV1={error:String(e?.message||e)}; }
       }
-      try{ const g=await geocode(/CA\b|California/i.test(s)?s:`${s}, CA`); out.geocode=g; out.detectedCounty=g?(route(g.lon,g.lat)?.slug||"outside_LA_Napa"):"geocode_failed"; }catch(e:any){ out.geocode={error:String(e?.message||e)}; }
+      try{ const g=await geocode(/CA\b|California/i.test(s)?s:`${s}, CA`); out.geocode=g; out.detectedCounty=g?(route(g.lon,g.lat)?.slug||"outside_LA_Napa"):"geocode_failed";
+        if(REGRID && g){
+          try{
+            const u2="https://app.regrid.com/api/v2/parcels/point?"+new URLSearchParams({lat:String(g.lat),lon:String(g.lon),radius:"50",token:REGRID});
+            const r2=await fetch(u2,{cache:"no-store",signal:AbortSignal.timeout(15000)});
+            out.pointV2={httpStatus:r2.status};
+            const t2=await r2.text();
+            try{ const d2=JSON.parse(t2); out.pointV2.topKeys=Object.keys(d2); const a2=(d2.parcels?.features||d2.features||d2.results||[]); out.pointV2.count=a2.length; }catch{}
+            out.pointV2.bodyPreview=t2.slice(0,300);
+          }catch(e:any){ out.pointV2={error:String(e?.message||e)}; }
+        }
+      }catch(e:any){ out.geocode={error:String(e?.message||e)}; }
       return NextResponse.json(out);
     }
     // Statewide provider (Regrid) first when configured
