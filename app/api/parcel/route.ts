@@ -73,25 +73,18 @@ function rec(f:any,src:Src,label:string){
 const SUF=new Set(["RD","ROAD","ST","STREET","AVE","AVENUE","BLVD","DR","DRIVE","LN","LANE","WAY","CT","COURT","PL","PLACE","CIR","CIRCLE","TER","HWY","PKWY","TRL","N","S","E","W"]);
 const isApn = (s:string)=>/^[0-9][0-9\- ]{4,}[0-9]$/.test(s.trim());
 function apnWhere(src:Src,s:string){const raw=s.trim().toUpperCase().replace(/'/g,"''"),dig=raw.replace(/[^0-9]/g,""),c:string[]=[];for(const f of src.apn){c.push(`${f}='${raw}'`);if(dig&&dig!==raw)c.push(`${f}='${dig}'`)}return c.join(" OR ")}
-function addrWhere(src:Src,s:string){
+function parseAddr(s:string){
   const up=s.trim().toUpperCase().replace(/'/g,"''"),t=up.split(/\s+/).filter(Boolean);
-  if(!t.length)return null;
-  let num=""; if(/^\d+[A-Z]?$/.test(t[0]))num=t.shift() as string;
-  const st=t.filter(x=>!SUF.has(x)&&x!=="CA"&&x!=="CALIFORNIA");
-  const key=st[0]||""; // most distinctive street word
-  if(!key&&!num)return null;
-  if(src.num&&src.num.length){
-    const parts:string[]=[];
-    if(num){
-      const nv=[...new Set([num,"0"+num,"00"+num,"000"+num])];
-      parts.push("("+src.num.flatMap(f=>nv.map(n=>`${f}='${n}'`)).join(" OR ")+")");
-    }
-    if(key)parts.push("("+src.addr.map(f=>`UPPER(${f}) LIKE '%${key}%'`).join(" OR ")+")");
-    return parts.length?parts.join(" AND "):null;
-  }
-  const pat=(num?num+"%":"%")+(key?key+"%":"");
-  return src.addr.map(f=>`UPPER(${f}) LIKE '${pat}'`).join(" OR ");
+  let num=""; if(t.length && /^\d+[A-Z]?$/.test(t[0])) num=(t.shift() as string).replace(/[A-Z]$/,"");
+  const st=t.filter(x=>!SUF.has(x)&&x!=="CA"&&x!=="CALIFORNIA"&&!/^\d{5}$/.test(x));
+  return { num, key:st[0]||"", keys:st };
 }
+// street-name-only WHERE (number is filtered in JS afterward — immune to zero-padding / field-format quirks)
+function streetWhere(src:Src,key:string){
+  if(!key)return null;
+  return src.addr.map(f=>`UPPER(${f}) LIKE '%${key}%'`).join(" OR ");
+}
+function numOf(addr:string){ const m=String(addr).trim().match(/^(\d+)/); return m?parseInt(m[1],10):null; }
 
 async function geocode(s:string){
   try{const u="https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?"+new URLSearchParams({address:s,benchmark:"Public_AR_Current",format:"json"});const r=await fetch(u,{cache:"no-store",signal:AbortSignal.timeout(15000)});if(r.ok){const d=await r.json(),m=d?.result?.addressMatches?.[0];if(m?.coordinates)return{lat:m.coordinates.y,lon:m.coordinates.x}}}catch{}
@@ -151,11 +144,18 @@ export async function GET(req:NextRequest){
       // when the geocoder can't place a rural/private road, still try every county the words hint at
       const tryC = near.length ? near : COUNTIES;
 
-      // 1) exact house-number + street match on the county's own address field (most authoritative)
+      // 1) match on street name, then filter to the exact house number in code (immune to number-format quirks)
+      const pa=parseAddr(s);
       for(const c of tryC){ for(const src of c.sources){ try{
-        const where=addrWhere(src,s); if(!where)continue;
-        const feats=await q(src,{where,resultRecordCount:"12",orderByFields:src.addr[0]});
-        const matches=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean).slice(0,12);
+        const where=streetWhere(src,pa.key); if(!where)continue;
+        const feats=await q(src,{where,resultRecordCount:"50",orderByFields:src.addr[0]});
+        let matches=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean) as any[];
+        if(pa.num){
+          const want=parseInt(pa.num,10);
+          const exact=matches.filter(m=>numOf(m.address)===want);
+          if(exact.length)matches=exact;
+        }
+        matches=matches.slice(0,12);
         if(matches.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches});
       }catch{} } }
 
