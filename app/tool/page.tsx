@@ -10,7 +10,7 @@ const VIEWS: Record<Slug,{c:[number,number];z:number;label:string}> = {
 };
 const STYLE = {version:8,sources:{carto:{type:"raster",tiles:["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png","https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png","https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],tileSize:256,attribution:"© OpenStreetMap © CARTO"}},layers:[{id:"carto",type:"raster",source:"carto"}]} as unknown as maplibregl.StyleSpecification;
 
-type Match = {apn:string;address:string;acreage:number;label:string;geometry:GeoJSON.Geometry;attrs:Record<string,any>};
+type Match = {apn:string;address:string;acreage:number;label:string;geometry:GeoJSON.Geometry;attrs:Record<string,any>;zoning?:string;zoning_description?:string};
 
 const BC:Record<string,string>={green:"#dcfce7",amber:"#fef3c7",red:"#fee2e2",gray:"#f1f5f9"};
 const BT:Record<string,string>={green:"#166534",amber:"#92400e",red:"#991b1b",gray:"#475569"};
@@ -80,18 +80,20 @@ export default function Home(){
     setSel(mt);setMatches([]);draw(mt.geometry);setMsg(`${mt.label} County · ${mt.address||mt.apn}`);
     setReport(null);setRepBusy(true);setAnalysis(null);
     const [lon,lat]=centroid(mt.geometry as any);
-    const cSlug=mt.label==="Napa"?"napa":"los_angeles";
+    const cSlug=mt.label==="Napa"?"napa":mt.label==="Los Angeles"?"los_angeles":mt.label.toLowerCase().replace(/\s+/g,"_");
+    const zoneQ=mt.zoning?`&zone=${encodeURIComponent(mt.zoning)}`:"";
+    const zdescQ=mt.zoning_description?`&zdesc=${encodeURIComponent(mt.zoning_description)}`:"";
     let rep:any=null;
     try{
-      const r=await fetch(`/api/feasibility?lon=${lon}&lat=${lat}&acres=${mt.acreage}&county=${cSlug}`);
+      const r=await fetch(`/api/feasibility?lon=${lon}&lat=${lat}&acres=${mt.acreage}&county=${cSlug}${zoneQ}${zdescQ}`);
       rep=await r.json();setReport(rep);
     }catch{setReport({error:true})}
     finally{setRepBusy(false)}
     setAnaBusy(true);
     try{
-      const uCode=pickVal(mt.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
-      const assessed=money(pickVal(mt.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]));
-      const landv=money(pickVal(mt.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"]));
+      const uCode=pickVal(mt.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
+      const assessed=money(pickVal(mt.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value","parval","saleprice"]));
+      const landv=money(pickVal(mt.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"]));
       const ar=await fetch("/api/analysis",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,apn:mt.apn,acreage:mt.acreage,county:mt.label,buildability:rep?.buildability,risk:rep?.risk,useCode:uCode,assessed,land:landv})});
       const aj=await ar.json();setAnalysis(aj.narrative||null);setAiFlag(!!aj.ai);
     }catch{setAnalysis(null)}
@@ -128,9 +130,9 @@ export default function Home(){
     const doc:any = new jsPDF({unit:"mm",format:"a4"});
     const W=210,M=15;let y=0;
     const V=(n:string[])=>money(pickVal(sel.attrs,n));
-    const vAssessed=V(["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]);
-    const vLand=V(["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"]);
-    const uCode=pickVal(sel.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
+    const vAssessed=V(["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value","parval","saleprice"]);
+    const vLand=V(["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"]);
+    const uCode=pickVal(sel.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
     const bb=report?.buildability||{}, rr=report?.risk||{};
     try{
       const blob=await (await fetch("/k2-logo.png")).blob();
@@ -183,8 +185,8 @@ export default function Home(){
 
   const b=report?.buildability, rk=report?.risk;
   const val=sel?money(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","assd_total","total_value"])):null;
-  const land=sel?money(pickVal(sel.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"])):null;
-  const useCode=sel?pickVal(sel.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]):null;
+  const land=sel?money(pickVal(sel.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"])):null;
+  const useCode=sel?pickVal(sel.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]):null;
 
   const S=(bg:string)=>({display:"inline-block",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,background:BC[bg]||BC.gray,color:BT[bg]||BT.gray});
   const kv=(k:string,v:any)=>(<div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #f4f6f9",fontSize:13}}><span style={{color:"#64748b"}}>{k}</span><span style={{fontWeight:600,textAlign:"right"}}>{v}</span></div>);
@@ -268,7 +270,7 @@ export default function Home(){
             {kv("Development capacity", b?.maxUnits!=null?<b>{b.maxUnits} dwelling{b.maxUnits===1?"":"s"} by right</b>:"—")}
             {kv("Assessed value", val||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
             {kv("Assessed land value", land||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
-            {val && kv("Value / acre", money((Number(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]))||0)/sel.acreage))}
+            {val && kv("Value / acre", money((Number(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value","parval","saleprice"]))||0)/sel.acreage))}
             <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Public assessor values trail market and some counties don't publish them here. Size the opportunity from the max-dwellings figure × achievable per-unit value from comps.</div>
 
             {H("④ What's happening nearby")}

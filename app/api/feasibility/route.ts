@@ -66,13 +66,18 @@ export async function GET(req: NextRequest) {
   const county = sp.get("county") || "napa";
   if (Number.isNaN(lon) || Number.isNaN(lat)) return NextResponse.json({ error: "lon/lat required" }, { status: 400 });
   const ov = OV[county] || {};
+  const zoneParam = (sp.get("zone") || "").trim().toUpperCase();
+  const zdesc = sp.get("zdesc") || "";
   const out: any = { buildability: {}, risk: {} };
 
   /* --- zoning + buildability --- */
   try {
-    const f = (await atPoint(ov.zoning.url, lon, lat))[0];
-    const raw = f ? pick(f.attributes, ov.zoning.pick) : null;
-    const code = raw ? String(raw).trim().toUpperCase() : null;
+    let code: string | null = zoneParam || null;
+    if (!code && ov.zoning) {
+      const f = (await atPoint(ov.zoning.url, lon, lat))[0];
+      const raw = f ? pick(f.attributes, ov.zoning.pick) : null;
+      code = raw ? String(raw).trim().toUpperCase() : null;
+    }
     const book = ZONES[county] || {};
     let rule = null;
     if (code) rule = book[code] || book[code.split(/[\s\-:_]/)[0]] || book[Object.keys(book).find(k => code.startsWith(k)) as string];
@@ -84,7 +89,7 @@ export async function GET(req: NextRequest) {
       else if (rule.perUnitSf) { units = Math.max(1, Math.floor(sf / rule.perUnitSf)); minLot = rule.perUnitSf.toLocaleString() + " sf / unit"; }
       if (ac <= 2) { const w = Math.sqrt(sf); envelope = Math.round(Math.max(0, w - 2 * SETBACKS.side) * Math.max(0, w - SETBACKS.front - SETBACKS.rear)); }
     }
-    out.buildability = { code, name: rule?.name || null, use: rule?.use || null, minLot, maxUnits: units, envelope, cite: rule?.cite || null, adu: "1 ADU + 1 JADU likely (CA Gov. Code §65852.2)" };
+    out.buildability = { code, name: rule?.name || null, use: rule?.use || zdesc || null, minLot, maxUnits: units, envelope, cite: rule?.cite || (zdesc ? "Zoning from Regrid parcel data" : null), adu: "1 ADU + 1 JADU likely (CA Gov. Code §65852.2)" };
   } catch { out.buildability = { error: true }; }
 
   /* --- FEMA flood --- */
