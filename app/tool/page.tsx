@@ -122,8 +122,9 @@ export default function Home(){
       const r=await fetch(url);const d=await r.json();
       if(d.status==="ok"&&d.matches?.length){
         const near=d.match==="nearby"||d.match==="approximate";
+        const street=d.match==="street";
         if(d.matches.length===1&&!near){choose(d.matches[0])}
-        else{setMatches(d.matches);draw(null);setMsg(near?"No address on file for that number — parcels at that spot, nearest first. Pick yours:":`${d.matches.length} parcels match — pick yours:`)}
+        else{setMatches(d.matches);draw(null);setMsg(near?"No address on file for that number — parcels at that spot, nearest first. Pick yours:":street?"That exact number isn't in the county address book — here are the lots on that road. Pick yours:":`${d.matches.length} parcels match — pick yours:`)}
       } else {draw(null);setMsg(d.message||"No parcel found.")}
     }catch{setMsg("Search failed — try again.")}
     finally{setBusy(false)}

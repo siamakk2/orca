@@ -86,6 +86,38 @@ function streetWhere(src:Src,key:string){
 }
 function numOf(addr:string){ const m=String(addr).trim().match(/^(\d+)/); return m?parseInt(m[1],10):null; }
 
+
+// ---- County E911 address-point locators (authoritative for private/rural roads) ----
+type AddrPts = { county:string; url:string; num:string; street:string; full:string };
+const ADDR_POINTS: AddrPts[] = [
+  { county:"napa", url:"https://gis.napacounty.gov/arcgis/rest/services/Hosted/Addresses_Main_All/FeatureServer/0/query", num:"addressnum", street:"streetname", full:"fulladdress" },
+];
+// Look up the exact address point in a county's E911 layer. Returns [{lon,lat,label}] sorted best-first.
+async function countyLocate(ap:AddrPts, num:string, key:string){
+  if(!key) return [];
+  const p=new URLSearchParams({
+    where:`UPPER(${ap.street}) LIKE '%${key}%'`+(num?` AND ${ap.num}='${num}'`:""),
+    outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25"
+  });
+  const r=await fetch(`${ap.url}?${p}`,{cache:"no-store",signal:AbortSignal.timeout(12000)});
+  if(!r.ok) return [];
+  const d=await r.json(); if(d.error) return [];
+  let feats=(d.features||[]).filter((f:any)=>f?.geometry&&Number.isFinite(f.geometry.x));
+  // exact number missed? fall back to the whole street so the user picks their lot
+  if(!feats.length && num){
+    const p2=new URLSearchParams({ where:`UPPER(${ap.street}) LIKE '%${key}%'`, outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25" });
+    const r2=await fetch(`${ap.url}?${p2}`,{cache:"no-store",signal:AbortSignal.timeout(12000)});
+    if(r2.ok){ const d2=await r2.json(); if(!d2.error) feats=(d2.features||[]).filter((f:any)=>f?.geometry&&Number.isFinite(f.geometry.x)); }
+  }
+  const seen=new Set<string>();
+  return feats.map((f:any)=>{
+    const a=f.attributes||{};
+    const label=String(a[ap.full]||`${a[ap.num]||""} ${a[ap.street]||""}`).trim();
+    return {lon:f.geometry.x, lat:f.geometry.y, label, num:String(a[ap.num]||"").trim()};
+  }).filter((x:any)=>{const k=x.label+x.lon.toFixed(6);if(seen.has(k))return false;seen.add(k);return true})
+    .sort((a:any,b:any)=>{const an=a.num===num?0:1,bn=b.num===num?0:1;return an-bn||(parseInt(a.num||"0",10)-parseInt(b.num||"0",10))});
+}
+
 async function geocode(s:string){
   try{const u="https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?"+new URLSearchParams({address:s,benchmark:"Public_AR_Current",format:"json"});const r=await fetch(u,{cache:"no-store",signal:AbortSignal.timeout(15000)});if(r.ok){const d=await r.json(),m=d?.result?.addressMatches?.[0];if(m?.coordinates)return{lat:m.coordinates.y,lon:m.coordinates.x}}}catch{}
   return null;
@@ -139,6 +171,27 @@ export async function GET(req:NextRequest){
     // ---- Address search: authoritative house-number match first, then geocoded point ----
     let geo:{lat:number;lon:number}|null=null;
     if(!apn){
+      const pa0=parseAddr(s);
+
+      // 0) county E911 address locator (authoritative — knows private/rural roads the geocoder doesn't)
+      for(const ap of ADDR_POINTS){ try{
+        const pts=await countyLocate(ap, pa0.num, pa0.key);
+        if(pts.length){
+          const c=bySlug(ap.county)!;
+          const exact=pts.filter((p:any)=>p.num===pa0.num);
+          const usePts=(exact.length?exact:pts).slice(0,8);
+          const out:any[]=[];
+          for(const pt of usePts){
+            for(const src of c.sources){ try{
+              const feats=await q(src,{geometry:JSON.stringify({x:pt.lon,y:pt.lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"2"});
+              for(const f of feats){ const r=rec(f,src,c.label); if(r){ if(!r.address&&pt.label)r.address=pt.label; if(!out.some(o=>o.apn===r.apn)) out.push(r); } }
+            }catch{} }
+            if(exact.length&&out.length)break; // exact address resolved — done
+          }
+          if(out.length)return NextResponse.json({status:"ok",match:exact.length?"exact":"street",county:c.slug,label:c.label,matches:out.slice(0,12)});
+        }
+      }catch{} }
+
       geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
       const near = geo ? routeAll(geo.lon,geo.lat) : [];
       // when the geocoder can't place a rural/private road, still try every county the words hint at
