@@ -62,9 +62,21 @@ export async function GET(req:NextRequest){
         if(matches.length)return NextResponse.json({status:"ok",county:county.slug,label:county.label,matches});
       }catch{}
     }
-    // fallback: geocode -> point
+    // fallback: geocode the address, then return ALL parcels near that point as candidates.
+    // Catches vacant/rural lots that carry NO address in the county record (e.g. undeveloped land).
     const g=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, ${county.label} County, CA`);
-    if(g){const gc=route(g.lon,g.lat)||county;for(const src of gc.sources){try{const feats=await q(src,{geometry:JSON.stringify({x:g.lon,y:g.lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects"});const m=feats.map((f:any)=>rec(f,src,gc.label)).filter(Boolean);if(m.length)return NextResponse.json({status:"ok",match:"approximate",county:gc.slug,label:gc.label,matches:m})}catch{}}}
+    if(g){
+      const gc=route(g.lon,g.lat)||county;
+      const d=0.008; // ~880m half-box around the geocoded point
+      const env={xmin:g.lon-d,ymin:g.lat-d,xmax:g.lon+d,ymax:g.lat+d,spatialReference:{wkid:4326}};
+      for(const src of gc.sources){try{
+        const feats=await q(src,{geometry:JSON.stringify(env),geometryType:"esriGeometryEnvelope",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"25"});
+        const withD=(feats.map((f:any)=>{const r=rec(f,src,gc.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((c:any)=>{cx+=c[0];cy+=c[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-g.lon)**2+(cy-g.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
+        withD.sort((a,b)=>a.dist-b.dist);
+        const m=withD.map(x=>x.r);
+        if(m.length)return NextResponse.json({status:"ok",match:"nearby",county:gc.slug,label:gc.label,matches:m});
+      }catch{}}
+    }
     return NextResponse.json({status:"not_found",message:`No parcel record for "${s}". Try just the street name, an APN, or tap the map.`});
   }
   const lat=parseFloat(sp.get("lat")||""),lon=parseFloat(sp.get("lon")||"");

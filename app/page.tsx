@@ -57,8 +57,9 @@ export default function Home(){
     try{
       const r=await fetch(url);const d=await r.json();
       if(d.status==="ok"&&d.matches?.length){
-        if(d.matches.length===1){choose(d.matches[0])}
-        else{setMatches(d.matches);draw(null);setMsg(`${d.matches.length} parcels match — pick yours below.`)}
+        const near=d.match==="nearby"||d.match==="approximate";
+        if(d.matches.length===1&&!near){choose(d.matches[0])}
+        else{setMatches(d.matches);draw(null);setMsg(near?"No address on file for that number — here are the parcels at that spot, nearest first. Pick yours:":`${d.matches.length} parcels match — pick yours below.`)}
       } else {draw(null);setMsg(d.message||"No parcel found.")}
     }catch{setMsg("Search failed — try again.")}
     finally{setBusy(false)}
