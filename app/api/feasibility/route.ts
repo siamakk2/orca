@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
       if (rule.minAc) { units = Math.max(1, Math.floor(ac / rule.minAc)); minLot = rule.minAc + " ac / dwelling"; }
       else if (rule.minSf) { units = Math.max(1, Math.floor(sf / rule.minSf)); minLot = rule.minSf.toLocaleString() + " sf min lot"; }
       else if (rule.perUnitSf) { units = Math.max(1, Math.floor(sf / rule.perUnitSf)); minLot = rule.perUnitSf.toLocaleString() + " sf / unit"; }
-      const w = Math.sqrt(sf); envelope = Math.round(Math.max(0, w - 2 * SETBACKS.side) * Math.max(0, w - SETBACKS.front - SETBACKS.rear));
+      if (ac <= 2) { const w = Math.sqrt(sf); envelope = Math.round(Math.max(0, w - 2 * SETBACKS.side) * Math.max(0, w - SETBACKS.front - SETBACKS.rear)); }
     }
     out.buildability = { code, name: rule?.name || null, use: rule?.use || null, minLot, maxUnits: units, envelope, cite: rule?.cite || null, adu: "1 ADU + 1 JADU likely (CA Gov. Code §65852.2)" };
   } catch { out.buildability = { error: true }; }

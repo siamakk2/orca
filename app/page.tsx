@@ -41,6 +41,9 @@ export default function Home(){
   const [sel,setSel]=useState<Match|null>(null);
   const [report,setReport]=useState<any>(null);
   const [repBusy,setRepBusy]=useState(false);
+  const [analysis,setAnalysis]=useState<string|null>(null);
+  const [anaBusy,setAnaBusy]=useState(false);
+  const [aiFlag,setAiFlag]=useState(false);
   const [ready,setReady]=useState(false);
 
   useEffect(()=>{
@@ -71,13 +74,24 @@ export default function Home(){
   }
   async function choose(mt:Match){
     setSel(mt);setMatches([]);draw(mt.geometry);setMsg(`${mt.label} County · ${mt.address||mt.apn}`);
-    setReport(null);setRepBusy(true);
+    setReport(null);setRepBusy(true);setAnalysis(null);
     const [lon,lat]=centroid(mt.geometry as any);
+    const cSlug=mt.label==="Napa"?"napa":"los_angeles";
+    let rep:any=null;
     try{
-      const r=await fetch(`/api/feasibility?lon=${lon}&lat=${lat}&acres=${mt.acreage}&county=${mt.label==="Napa"?"napa":"los_angeles"}`);
-      setReport(await r.json());
+      const r=await fetch(`/api/feasibility?lon=${lon}&lat=${lat}&acres=${mt.acreage}&county=${cSlug}`);
+      rep=await r.json();setReport(rep);
     }catch{setReport({error:true})}
     finally{setRepBusy(false)}
+    setAnaBusy(true);
+    try{
+      const uCode=pickVal(mt.attrs,["landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
+      const assessed=money(pickVal(mt.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value"]));
+      const landv=money(pickVal(mt.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value"]));
+      const ar=await fetch("/api/analysis",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,apn:mt.apn,acreage:mt.acreage,county:mt.label,buildability:rep?.buildability,risk:rep?.risk,useCode:uCode,assessed,land:landv})});
+      const aj=await ar.json();setAnalysis(aj.narrative||null);setAiFlag(!!aj.ai);
+    }catch{setAnalysis(null)}
+    finally{setAnaBusy(false)}
   }
 
   async function run(url:string,label:string){
@@ -121,8 +135,14 @@ export default function Home(){
     drawShape(doc,sel.geometry,W-M-46,30,46,34);
     y+=7;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(100,116,139);
     doc.text(`APN ${sel.apn}    ${sel.label} County    ${sel.acreage} acres`,M,y);
-    const sec=(t:string)=>{y+=8;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text(t,M,y);y+=6.5;doc.setFont("helvetica","normal");doc.setFontSize(10)};
-    const row=(k:string,v:any,c?:number[])=>{doc.setTextColor(100,116,139);doc.setFont("helvetica","normal");doc.text(k,M,y);const col=c||[15,23,42];doc.setTextColor(col[0],col[1],col[2]);doc.setFont("helvetica","bold");doc.text(String(v),W-M,y,{align:"right"});y+=6.6};
+    if(analysis){
+      y+=10;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;
+      doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text("INVESTOR ANALYSIS"+(aiFlag?"  (AI)":""),M,y);y+=6;
+      doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);
+      doc.splitTextToSize(analysis.replace(/\*\*/g,""),W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5});
+    }
+    const sec=(t:string)=>{if(y>250){doc.addPage();y=20}y+=8;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text(t,M,y);y+=6.5;doc.setFont("helvetica","normal");doc.setFontSize(10)};
+    const row=(k:string,v:any,c?:number[])=>{if(y>278){doc.addPage();y=20}doc.setTextColor(100,116,139);doc.setFont("helvetica","normal");doc.text(k,M,y);const col=c||[15,23,42];doc.setTextColor(col[0],col[1],col[2]);doc.setFont("helvetica","bold");doc.text(String(v),W-M,y,{align:"right"});y+=6.6};
     const RC:Record<string,number[]>={green:[22,101,52],amber:[146,64,14],red:[153,27,27],gray:[100,116,139]};
     sec("1.  What You Can Build");
     row("Zoning district",bb.code||"Not returned");
@@ -137,7 +157,8 @@ export default function Home(){
     row("Development capacity",bb.maxUnits!=null?`${bb.maxUnits} dwelling${bb.maxUnits===1?"":"s"} by right`:"—");
     row("Assessed value",vAssessed||"Not published in public layer");
     row("Assessed land value",vLand||"Not published in public layer");
-    y=276;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=5;
+    if(y>270){doc.addPage();y=20}else{y+=6}
+    doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=5;
     doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(148,163,184);
     doc.text(doc.splitTextToSize("Sources: county assessor parcel data, FEMA National Flood Hazard Layer, county hazard layers. Zoning is summarized for common districts — confirm against the county code and overlays. This is a rapid feasibility screen, not an appraisal or a substitute for professional due diligence.",W-2*M),M,y);
     doc.save(`Orca-Feasibility-${sel.apn.replace(/[^\w]/g,"")}.pdf`);
@@ -202,12 +223,21 @@ export default function Home(){
           </div>
 
           <div style={{padding:"0 18px 18px"}}>
+            <div style={{marginTop:14,padding:"14px 16px",background:"linear-gradient(135deg,#eff6ff,#f0f9ff)",border:"1px solid #dbeafe",borderRadius:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#2563eb",marginBottom:8}}>
+                <span>◆ Investor Analysis</span>{aiFlag&&<span style={{fontSize:9,background:"#2563eb",color:"#fff",padding:"1px 6px",borderRadius:999}}>AI</span>}
+              </div>
+              {anaBusy&&!analysis ? <div style={{fontSize:13,color:"#64748b"}}>Analyzing the deal…</div>
+                : analysis ? <div style={{fontSize:13,lineHeight:1.6,color:"#1e293b",whiteSpace:"pre-wrap"}}>{analysis.replace(/\*\*/g,"")}</div>
+                : <div style={{fontSize:13,color:"#94a3b8"}}>Analysis unavailable.</div>}
+            </div>
+
             {H("① What you can build")}
             {repBusy && !report ? <div style={{fontSize:13,color:"#94a3b8",padding:"8px 0"}}>Reading zoning…</div> : b?.error ? <div style={{fontSize:13,color:"#94a3b8",padding:"8px 0"}}>Zoning layer didn't respond — verify with county.</div> : (<>
               {kv("Zoning district", b?.code ? <span style={S("gray")}>{b.code}</span> : <span style={S("amber")}>not returned</span>)}
               {b?.name && kv("District", b.name)}
               {b?.use && kv("Primary use", b.use)}
-              {b?.minLot && kv("Min lot / density", b.minLot)}
+              {b?.minLot && kv("Min. parcel size (this zone)", b.minLot)}
               {kv("Max dwellings (by density)", <span style={{fontSize:18,fontWeight:800,color:"#1d4ed8"}}>{b?.maxUnits!=null?b.maxUnits:"—"}</span>)}
               {b?.envelope && kv("Est. buildable footprint", b.envelope.toLocaleString()+" sf")}
               {kv("ADU potential", <span style={S("green")}>1 ADU + 1 JADU likely</span>)}
