@@ -8,16 +8,44 @@ type Src = { url: string; apn: string[]; addr: string[] };
 type County = { slug: string; label: string; bbox: [number,number,number,number]; sources: Src[] };
 
 const COUNTIES: County[] = [
-  { slug:"los_angeles", label:"Los Angeles", bbox:[-118.95,33.7,-117.64,34.82], sources:[
+  { slug:"los_angeles", label:"Los Angeles", bbox:[-118.95,33.70,-117.64,34.82], sources:[
     { url:"https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", apn:["AIN","APN"], addr:["SitusFullAddress","SitusAddress"] },
   ]},
   { slug:"napa", label:"Napa", bbox:[-122.65,38.15,-122.06,38.87], sources:[
     { url:"https://gis.napacounty.gov/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query", apn:["asmtwithdash","asmt"], addr:["streetaddr"] },
   ]},
+  { slug:"orange", label:"Orange", bbox:[-118.13,33.34,-117.40,33.95], sources:[
+    { url:"https://www.ocgis.com/arcpub/rest/services/Map_Layers/Parcels/MapServer/0/query", apn:["ASSESSMENT_NO"], addr:["SITE_ADDRESS"] },
+  ]},
+  { slug:"san_diego", label:"San Diego", bbox:[-117.61,32.52,-116.08,33.51], sources:[
+    { url:"https://webmaps.sandiego.gov/arcgis/rest/services/GeocoderMerged/MapServer/1/query", apn:["APN","APN_8"], addr:["SITUS_STREET","SITUS_ADDRESS"] },
+  ]},
+  { slug:"san_bernardino", label:"San Bernardino", bbox:[-117.81,33.86,-114.13,35.81], sources:[
+    { url:"https://services.arcgis.com/aA3snZwJfFkVyDuP/arcgis/rest/services/Parcels_for_San_Bernardino_County/FeatureServer/0/query", apn:["ParcelNumber"], addr:["SitusAddress","Address"] },
+  ]},
+  { slug:"sacramento", label:"Sacramento", bbox:[-121.87,38.01,-121.02,38.74], sources:[
+    { url:"https://services1.arcgis.com/5NARefyPVtAeuJPU/arcgis/rest/services/Parcels/FeatureServer/0/query", apn:["APN"], addr:["STREET_NAM"] },
+  ]},
+  { slug:"santa_clara", label:"Santa Clara", bbox:[-122.21,36.88,-121.20,37.49], sources:[
+    { url:"https://services8.arcgis.com/fpjs8A5Vtkshblnd/arcgis/rest/services/Santa_Clara_County_Parcels/FeatureServer/0/query", apn:["apn"], addr:["situs_stre"] },
+  ]},
+  { slug:"alameda", label:"Alameda", bbox:[-122.37,37.45,-121.46,37.91], sources:[
+    { url:"https://services5.arcgis.com/ROBnTHSNjoZ2Wm1P/arcgis/rest/services/Parcels/FeatureServer/0/query", apn:["APN"], addr:["SitusAddress","SitusStreetName"] },
+  ]},
+  { slug:"contra_costa", label:"Contra Costa", bbox:[-122.44,37.71,-121.53,38.10], sources:[
+    { url:"https://gis.cccounty.us/arcgis/rest/services/CCMAP/Assessment_Parcels_ArcPro/MapServer/0/query", apn:["APN"], addr:["N_STR_NM"] },
+  ]},
+  { slug:"ventura", label:"Ventura", bbox:[-119.65,33.98,-118.63,34.90], sources:[
+    { url:"https://maps.ventura.org/arcgis/rest/services/SDs/Parcels/MapServer/0/query", apn:["APN","APN10"], addr:["SITUS","SITUS_STRE"] },
+  ]},
+  { slug:"sonoma", label:"Sonoma", bbox:[-123.54,38.10,-122.34,38.86], sources:[
+    { url:"https://socogis.sonomacounty.ca.gov/map/rest/services/OWTSPublic/Cities_GIS_Parcel_Base/FeatureServer/0/query", apn:["APN"], addr:["SitusFormatted1","SitusStreetName"] },
+  ]},
 ];
 
 const bySlug = (s:string|null) => COUNTIES.find(c=>c.slug===s) || null;
 const route = (lon:number,lat:number) => COUNTIES.find(c=>{const[w,s,e,n]=c.bbox;return lon>=w&&lon<=e&&lat>=s&&lat<=n})||null;
+const routeAll = (lon:number,lat:number) => COUNTIES.filter(c=>{const[w,s,e,n]=c.bbox;return lon>=w&&lon<=e&&lat>=s&&lat<=n});
 
 function cw(r:number[][]){let s=0;for(let i=0;i<r.length;i++){const[a,b]=r[i],[c,d]=r[(i+1)%r.length];s+=(c-a)*(d+b)}return s>0}
 function rings2geo(rings:number[][][]){const o=rings.filter(cw),h=rings.filter(r=>!cw(r)),base=o.length?o:rings,p=base.map(x=>[x]);for(const x of h)p[0]?.push(x);return p.length===1?{type:"Polygon",coordinates:p[0]}:{type:"MultiPolygon",coordinates:p}}
@@ -35,7 +63,9 @@ async function q(src:Src,extra:Record<string,string>){
 function rec(f:any,src:Src,label:string){
   if(!f?.geometry?.rings)return null;
   const g=rings2geo(f.geometry.rings);
-  return {apn:first(f.attributes||{},src.apn)||"—",address:first(f.attributes||{},src.addr)||"",acreage:acres(g),label,geometry:g,attrs:f.attributes||{}};
+  const a=f.attributes||{};
+  const zoning=first(a,["Zoning","ZONING","ZONE","zoning","ZONE_CODE","zone_code","zone","ZONE_"]);
+  return {apn:first(a,src.apn)||"—",address:first(a,src.addr)||"",acreage:acres(g),label,geometry:g,attrs:a,zoning:zoning||null};
 }
 
 const SUF=new Set(["RD","ROAD","ST","STREET","AVE","AVENUE","BLVD","DR","DRIVE","LN","LANE","WAY","CT","COURT","PL","PLACE","CIR","CIRCLE","TER","HWY","PKWY","TRL","N","S","E","W"]);
@@ -82,56 +112,13 @@ export async function GET(req:NextRequest){
   const sp=req.nextUrl.searchParams, s=(sp.get("q")||"").trim();
   if(s){
     const apn=isApn(s);
-    if(sp.get("debug")==="1"){
-      const out:any={ q:s, isApn:apn, regridConfigured:!!REGRID };
-      if(REGRID){
-        try{
-          const query=apn?s:(/CA\b|California/i.test(s)?s:`${s}, CA`);
-          const u="https://app.regrid.com/api/v1/search.json?"+new URLSearchParams({query,limit:"3",token:REGRID});
-          const r=await fetch(u,{cache:"no-store",signal:AbortSignal.timeout(15000)});
-          out.searchV1={httpStatus:r.status};
-          const txt=await r.text();
-          try{ const d=JSON.parse(txt); out.searchV1.topKeys=Object.keys(d); const arr=(d.results||d.parcels?.features||d.features||[]); out.searchV1.count=arr.length; }
-          catch{}
-          out.searchV1.bodyPreview=txt.slice(0,300);
-        }catch(e:any){ out.searchV1={error:String(e?.message||e)}; }
-      }
-      try{ const g=await geocode(/CA\b|California/i.test(s)?s:`${s}, CA`); out.geocode=g; out.detectedCounty=g?(route(g.lon,g.lat)?.slug||"outside_LA_Napa"):"geocode_failed";
-        if(REGRID && g){
-          try{
-            const u2="https://app.regrid.com/api/v2/parcels/point?"+new URLSearchParams({lat:String(g.lat),lon:String(g.lon),radius:"50",token:REGRID});
-            const r2=await fetch(u2,{cache:"no-store",signal:AbortSignal.timeout(15000)});
-            out.pointV2={httpStatus:r2.status};
-            const t2=await r2.text();
-            try{ const d2=JSON.parse(t2); out.pointV2.topKeys=Object.keys(d2); const a2=(d2.parcels?.features||d2.features||d2.results||[]); out.pointV2.count=a2.length; }catch{}
-            out.pointV2.bodyPreview=t2.slice(0,300);
-          }catch(e:any){ out.pointV2={error:String(e?.message||e)}; }
-        }
-      }catch(e:any){ out.geocode={error:String(e?.message||e)}; }
-      return NextResponse.json(out);
-    }
-    // Statewide provider (Regrid) first when configured
-    const rgDiag:any={configured:!!REGRID};
-    if(REGRID){
-      const query=apn?s:(/CA\b|California/i.test(s)?s:`${s}, CA`);
-      const u="https://app.regrid.com/api/v1/search.json?"+new URLSearchParams({query,limit:"25",token:REGRID});
-      try{
-        const r=await fetch(u,{cache:"no-store",signal:AbortSignal.timeout(15000)});
-        rgDiag.status=r.status;
-        if(r.ok){
-          const d=await r.json();
-          const arr=(d.results||d.parcels?.features||d.features||[]);
-          rgDiag.count=arr.length;
-          const m=arr.map(regridRec).filter(Boolean);
-          rgDiag.parsed=m.length;
-          if(m.length)return NextResponse.json({status:"ok",provider:"regrid",label:m[0]!.label,matches:m.slice(0,12),_diag:rgDiag});
-        } else { rgDiag.body=(await r.text()).slice(0,160); }
-      }catch(e:any){ rgDiag.error=String(e?.message||e); }
-    }
+    // 1) geocode addresses to detect county (APNs skip geocoding)
     let county=bySlug(sp.get("county"));
     let geo:{lat:number;lon:number}|null=null;
-    if(!county && !apn){ geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`); if(geo){ county=route(geo.lon,geo.lat); } }
-    const cand = county ? [county] : COUNTIES;
+    if(!county && !apn){ geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`); }
+    const near = county ? [county] : (geo ? routeAll(geo.lon,geo.lat) : []);
+    // 2) direct record match — detected/given counties, else (APN) all counties
+    const cand = near.length ? near : (apn ? COUNTIES : []);
     for(const c of cand){
       for(const src of c.sources){
         try{
@@ -139,33 +126,43 @@ export async function GET(req:NextRequest){
           if(!where)continue;
           const feats=await q(src,{where,resultRecordCount:"12",orderByFields:src.addr[0]});
           const matches=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean).slice(0,12);
-          if(matches.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches,_diag:rgDiag});
+          if(matches.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches});
         }catch{}
       }
     }
-    // 2) geocode → nearby parcels (catches vacant lots with no address on file)
-    if(!geo) geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
+    // 3) geocode -> nearby parcels across every bbox-matching county (vacant lots + county overlaps)
     if(geo){
-      const gc=route(geo.lon,geo.lat);
-      if(!gc) return NextResponse.json({status:"expanding",message:`That address is in California but outside our live counties (Los Angeles & Napa). Full statewide coverage is rolling out.`,_diag:rgDiag});
       const d=0.008, env={xmin:geo.lon-d,ymin:geo.lat-d,xmax:geo.lon+d,ymax:geo.lat+d,spatialReference:{wkid:4326}};
-      for(const src of gc.sources){try{
-        const feats=await q(src,{geometry:JSON.stringify(env),geometryType:"esriGeometryEnvelope",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"25"});
-        const withD=(feats.map((f:any)=>{const r=rec(f,src,gc.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((c:any)=>{cx+=c[0];cy+=c[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-geo!.lon)**2+(cy-geo!.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
-        withD.sort((a,b)=>a.dist-b.dist);
-        const m=withD.map(x=>x.r);
-        if(m.length)return NextResponse.json({status:"ok",match:"nearby",county:gc.slug,label:gc.label,matches:m.slice(0,12),_diag:rgDiag});
-      }catch{}}
+      for(const gc of (near.length?near:routeAll(geo.lon,geo.lat))){
+        for(const src of gc.sources){try{
+          const feats=await q(src,{geometry:JSON.stringify(env),geometryType:"esriGeometryEnvelope",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"25"});
+          const withD=(feats.map((f:any)=>{const r=rec(f,src,gc.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((c:any)=>{cx+=c[0];cy+=c[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-geo!.lon)**2+(cy-geo!.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
+          withD.sort((a,b)=>a.dist-b.dist);
+          const m=withD.map(x=>x.r);
+          if(m.length)return NextResponse.json({status:"ok",match:"nearby",county:gc.slug,label:gc.label,matches:m.slice(0,12)});
+        }catch{}}
+      }
     }
-    return NextResponse.json({status:"not_found",message:`No parcel found for "${s}". Try the full street address or an APN.`,_diag:rgDiag});
+    // 4) Regrid statewide fallback (covers all 58 counties once a data-bearing token is set)
+    if(REGRID){
+      try{
+        const query=apn?s:(/CA\b|California/i.test(s)?s:`${s}, CA`);
+        const m=await regridSearch(query);
+        if(m.length)return NextResponse.json({status:"ok",provider:"regrid",label:m[0]!.label,matches:m.slice(0,12)});
+      }catch{}
+    }
+    if(geo && !routeAll(geo.lon,geo.lat).length) return NextResponse.json({status:"expanding",message:`That address is in California but outside the counties we cover so far — we're expanding statewide.`});
+    return NextResponse.json({status:"not_found",message:`No parcel found for "${s}". Try the full street address (street + city) or the APN.`});
   }
   const lat=parseFloat(sp.get("lat")||""),lon=parseFloat(sp.get("lon")||"");
   if(Number.isNaN(lat)||Number.isNaN(lon))return NextResponse.json({status:"error",message:"q or lat/lon required"},{status:400});
-  if(REGRID){
-    try{const m=await regridPoint(lon,lat);if(m.length)return NextResponse.json({status:"ok",provider:"regrid",label:m[0]!.label,matches:m})}catch{}
+  for(const county of routeAll(lon,lat)){
+    for(const src of county.sources){try{
+      const feats=await q(src,{geometry:JSON.stringify({x:lon,y:lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects"});
+      const m=feats.map((f:any)=>rec(f,src,county.label)).filter(Boolean);
+      if(m.length)return NextResponse.json({status:"ok",county:county.slug,label:county.label,matches:m});
+    }catch{}}
   }
-  const county=route(lon,lat);
-  if(!county)return NextResponse.json({status:"out_of_area",message:"That point isn't in a county we can read yet."});
-  for(const src of county.sources){try{const feats=await q(src,{geometry:JSON.stringify({x:lon,y:lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects"});const m=feats.map((f:any)=>rec(f,src,county.label)).filter(Boolean);if(m.length)return NextResponse.json({status:"ok",county:county.slug,label:county.label,matches:m})}catch{}}
+  if(REGRID){ try{const m=await regridPoint(lon,lat);if(m.length)return NextResponse.json({status:"ok",provider:"regrid",label:m[0]!.label,matches:m})}catch{} }
   return NextResponse.json({status:"not_found",message:"No parcel at that spot."});
 }
