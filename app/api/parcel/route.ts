@@ -4,6 +4,11 @@ import area from "@turf/area";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const SB_DIAG="https://rlvibtvyaunuiwizqigj.supabase.co/rest/v1/orca_diag";
+const SB_DIAG_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsdmlidHZ5YXVudWl3aXpxaWdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MjExMDMsImV4cCI6MjA5Nzk5NzEwM30.rnqUIK4rhKCBkcWZLY8qqF8lKqu1FEcb2J33VuRExh0";
+function dlog(tag:string,data:any){ try{ fetch(SB_DIAG,{method:"POST",headers:{apikey:SB_DIAG_KEY,Authorization:`Bearer ${SB_DIAG_KEY}`,"Content-Type":"application/json",Prefer:"return=minimal"},body:JSON.stringify({tag,data})}).catch(()=>{}); }catch{} }
+
+
 type Src = { url: string; apn: string[]; addr: string[]; num?: string[] };
 type County = { slug: string; label: string; bbox: [number,number,number,number]; sources: Src[] };
 
@@ -172,10 +177,12 @@ export async function GET(req:NextRequest){
     let geo:{lat:number;lon:number}|null=null;
     if(!apn){
       const pa0=parseAddr(s);
+      dlog("rt_search",{q:s,parsed:pa0,commit:process.env.VERCEL_GIT_COMMIT_SHA||"?"});
 
       // 0) county E911 address locator (authoritative — knows private/rural roads the geocoder doesn't)
       for(const ap of ADDR_POINTS){ try{
         const pts=await countyLocate(ap, pa0.num, pa0.key);
+        dlog("rt_step0",{county:ap.county,key:pa0.key,num:pa0.num,pts:pts.length,first:pts[0]?.label||null});
         if(pts.length){
           const c=bySlug(ap.county)!;
           const exact=pts.filter((p:any)=>p.num===pa0.num);
@@ -188,9 +195,10 @@ export async function GET(req:NextRequest){
             }catch{} }
             if(exact.length&&out.length)break; // exact address resolved — done
           }
+          dlog("rt_step0_out",{parcels:out.length,exact:exact.length,firstApn:out[0]?.apn||null});
           if(out.length)return NextResponse.json({status:"ok",match:exact.length?"exact":"street",county:c.slug,label:c.label,matches:out.slice(0,12)});
         }
-      }catch{} }
+      }catch(e:any){ dlog("rt_step0_err",{county:ap.county,err:String(e?.message||e)}); } }
 
       geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
       const near = geo ? routeAll(geo.lon,geo.lat) : [];
@@ -230,7 +238,7 @@ export async function GET(req:NextRequest){
           const withD=(feats.map((f:any)=>{const r=rec(f,src,c.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((pc:any)=>{cx+=pc[0];cy+=pc[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-geo!.lon)**2+(cy-geo!.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
           withD.sort((a,b)=>a.dist-b.dist);
           const m=withD.map(x=>x.r);
-          if(m.length)return NextResponse.json({status:"ok",match:"nearby",county:c.slug,label:c.label,matches:m.slice(0,12)});
+          if(m.length){ dlog("rt_nearby",{county:c.slug,n:m.length,first:m[0]?.address||m[0]?.apn}); return NextResponse.json({status:"ok",match:"nearby",county:c.slug,label:c.label,matches:m.slice(0,12)}); }
         }catch{} } }
       }
     }
