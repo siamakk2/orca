@@ -130,7 +130,7 @@ export default function Landing() {
             <img src="/k2-logo.png" alt="K2" />
             <span>K2 <b>Investment</b> Inc.</span>
           </div>
-          <div className="fnote">Downtown Los Angeles · Serving California real estate for 30 years. This tool is a rapid feasibility screen, not an appraisal or a substitute for professional due diligence.</div>
+          <div className="fnote">Downtown Los Angeles · Serving California real estate for 30 years. The Parcel Finder is a rapid feasibility screen for informational purposes only — not legal, financial, investment, or land-use advice, and not an appraisal. Reports draw on public data and AI analysis that may contain errors; verify everything with the applicable planning department and licensed professionals before any decision.</div>
         </div>
       </footer>
     </main>

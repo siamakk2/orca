@@ -110,7 +110,7 @@ export default function Home(){
     const actP=fetch("/api/activity",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,county:mt.label,apn:mt.apn})})
       .then(r=>r.json()).then(aj=>{setActEnabled(aj.enabled!==false);setActivity(aj.briefing||null);setActSources(aj.sources||[])})
       .catch(()=>setActivity(null)).finally(()=>setActBusy(false));
-    const znP=fetch("/api/zoning",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,county:mt.label,apn:mt.apn,acreage:mt.acreage,zoning:mt.zoning})})
+    const znP=fetch("/api/zoning",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,county:mt.label,apn:mt.apn,acreage:mt.acreage,zoning:mt.zoning||rep?.zone?.code||null,zoneDesc:rep?.zone?.name||null,lat,lon,flood:rep?.risk?.flood?.label||null,fire:rep?.risk?.fire?.label||null,williamson:rep?.risk?.williamson?.label||null,terrain:rep?.risk?.terrain?.label||null})})
       .then(r=>r.json()).then(zj=>{setZoning(zj.report||null);setZnSources(zj.sources||[])})
       .catch(()=>setZoning(null)).finally(()=>setZnBusy(false));
     await Promise.allSettled([actP,znP]);
@@ -212,7 +212,7 @@ export default function Home(){
     if(y>270){doc.addPage();y=20}else{y+=6}
     doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=5;
     doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(148,163,184);
-    doc.text(doc.splitTextToSize("Sources: county assessor parcel data, FEMA National Flood Hazard Layer, county hazard layers. Zoning is summarized for common districts — confirm against the county code and overlays. This is a rapid feasibility screen, not an appraisal or a substitute for professional due diligence.",W-2*M),M,y);
+    doc.text(doc.splitTextToSize("DISCLAIMER: This report is for informational purposes only and is not legal, financial, investment, tax, or land-use advice, an appraisal, or a recommendation to transact. Data comes from public county, state, and federal sources and may be incomplete or outdated; portions are AI-generated and may contain errors. Verify all zoning, overlays, hazards, and development standards with the applicable planning department before any decision. K2 Investment makes no warranty of accuracy and accepts no liability for reliance on this report. Consult licensed professionals before purchasing or developing land.",W-2*M),M,y);
     doc.save(`Orca-Feasibility-${sel.apn.replace(/[^\w]/g,"")}.pdf`);
   }
 
@@ -381,7 +381,9 @@ export default function Home(){
               : activity ? <><div style={{fontSize:13,lineHeight:1.6,color:"#1e293b",whiteSpace:"pre-wrap"}}>{activity}</div>{actSources.length>0 && <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Sources: {actSources.join(" · ")}</div>}</>
               : <div style={{fontSize:12,color:"#94a3b8"}}>No notable nearby development activity found.</div>}
 
-            <div style={{marginTop:16,padding:"10px 12px",background:"#f8fafc",borderRadius:10,fontSize:11,color:"#94a3b8",lineHeight:1.5}}>Zoning rules are summarized for common districts and must be confirmed against the county code and overlays (setback, hillside, SEA). Not an appraisal — a fast go/no-go, not a substitute for due diligence.</div>
+            <div style={{marginTop:16,padding:"12px 14px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,fontSize:10.5,color:"#94a3b8",lineHeight:1.55}}>
+              <b style={{color:"#64748b"}}>Disclaimer.</b> This report is provided for informational purposes only and does not constitute legal, financial, investment, tax, or land-use advice, an appraisal, or a recommendation to buy or sell any property. Data is drawn from public county, state, and federal sources that may be incomplete, outdated, or contain errors, and portions of the analysis are AI-generated and may be inaccurate. Zoning, overlays, hazard designations, and development standards change and must be independently verified with the applicable city or county planning department before any decision. K2 Investment and its affiliates make no warranty of accuracy or completeness and accept no liability for actions taken in reliance on this report. Consult licensed professionals (attorney, engineer, surveyor, broker) before purchasing or developing land.
+            </div>
           </div>
         </div>
       )}

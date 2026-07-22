@@ -79,7 +79,7 @@ const SUF=new Set(["RD","ROAD","ST","STREET","AVE","AVENUE","BLVD","DR","DRIVE",
 const isApn = (s:string)=>/^[0-9][0-9\- ]{4,}[0-9]$/.test(s.trim());
 function apnWhere(src:Src,s:string){const raw=s.trim().toUpperCase().replace(/'/g,"''"),dig=raw.replace(/[^0-9]/g,""),c:string[]=[];for(const f of src.apn){c.push(`${f}='${raw}'`);if(dig&&dig!==raw)c.push(`${f}='${dig}'`)}return c.join(" OR ")}
 function parseAddr(s:string){
-  const up=s.trim().toUpperCase().replace(/'/g,"''"),t=up.split(/\s+/).filter(Boolean);
+  const up=s.trim().toUpperCase().replace(/'/g,"''").replace(/[.,]/g," "),t=up.split(/\s+/).filter(Boolean);
   let num=""; if(t.length && /^\d+[A-Z]?$/.test(t[0])) num=(t.shift() as string).replace(/[A-Z]$/,"");
   const st=t.filter(x=>!SUF.has(x)&&x!=="CA"&&x!=="CALIFORNIA"&&!/^\d{5}$/.test(x));
   return { num, key:st[0]||"", keys:st };
@@ -159,8 +159,9 @@ async function regridPoint(lon:number,lat:number){
 }
 
 export async function GET(req:NextRequest){
-  const sp=req.nextUrl.searchParams, s=(sp.get("q")||"").trim();
+  const sp=req.nextUrl.searchParams; let s=(sp.get("q")||"").trim();
   if(s){
+    s=s.replace(/^\s*(apn|parcel|assessor)\s*[:#]?\s*/i,"");
     const apn=isApn(s);
 
     // ---- APN search: query the assessor number directly across counties ----
@@ -178,14 +179,22 @@ export async function GET(req:NextRequest){
     if(!apn){
       const pa0=parseAddr(s);
       dlog("rt_search",{q:s,parsed:pa0,commit:process.env.VERCEL_GIT_COMMIT_SHA||"?"});
+      geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
+      const near0 = geo ? routeAll(geo.lon,geo.lat) : [];
+      const qUP=s.toUpperCase();
 
-      // 0) county E911 address locator (authoritative — knows private/rural roads the geocoder doesn't)
+      // 0) county E911 address locator — ONLY when the search plausibly belongs to that county
+      //    (geocoded into its bbox, or the query names the county and geocoding failed)
       for(const ap of ADDR_POINTS){ try{
+        const plausible = near0.some(c=>c.slug===ap.county) || (!geo && qUP.includes(ap.county.toUpperCase()));
+        if(!plausible) continue;
         const pts=await countyLocate(ap, pa0.num, pa0.key);
         dlog("rt_step0",{county:ap.county,key:pa0.key,num:pa0.num,pts:pts.length,first:pts[0]?.label||null});
         if(pts.length){
           const c=bySlug(ap.county)!;
           const exact=pts.filter((p:any)=>p.num===pa0.num);
+          // street-level (non-exact) suggestions only when the query names this county — never for out-of-county searches
+          if(!exact.length && !qUP.includes(ap.county.toUpperCase())) continue;
           const usePts=(exact.length?exact:pts).slice(0,8);
           const out:any[]=[];
           for(const pt of usePts){
@@ -193,16 +202,14 @@ export async function GET(req:NextRequest){
               const feats=await q(src,{geometry:JSON.stringify({x:pt.lon,y:pt.lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"2"});
               for(const f of feats){ const r=rec(f,src,c.label); if(r){ if(!r.address&&pt.label)r.address=pt.label; if(!out.some(o=>o.apn===r.apn)) out.push(r); } }
             }catch{} }
-            if(exact.length&&out.length)break; // exact address resolved — done
+            if(exact.length&&out.length)break;
           }
           dlog("rt_step0_out",{parcels:out.length,exact:exact.length,firstApn:out[0]?.apn||null});
           if(out.length)return NextResponse.json({status:"ok",match:exact.length?"exact":"street",county:c.slug,label:c.label,matches:out.slice(0,12)});
         }
       }catch(e:any){ dlog("rt_step0_err",{county:ap.county,err:String(e?.message||e)}); } }
 
-      geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
-      const near = geo ? routeAll(geo.lon,geo.lat) : [];
-      // when the geocoder can't place a rural/private road, still try every county the words hint at
+      const near = near0;
       const tryC = near.length ? near : COUNTIES;
 
       // 1) match on street name, then filter to the exact house number in code (immune to number-format quirks)
