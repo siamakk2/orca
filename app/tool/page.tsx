@@ -59,6 +59,22 @@ const INTRO_CSS=`
 @media (prefers-reduced-motion:reduce){.k2-card{animation:none}}
 `;
 function centroid(g:any){const polys=g.type==="Polygon"?[g.coordinates]:g.coordinates;let x=0,y=0,n=0;polys.forEach((pl:any)=>pl[0].forEach((c:any)=>{x+=c[0];y+=c[1];n++}));return[x/n,y/n]}
+const TOTALF=["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","assd_total","total_value","parval","saleprice"];
+const PARTF=["Roll_LandValue","Roll_ImpValue","Roll_FixtureValue","Roll_PersPropValue"];
+// Several counties (LA among them) publish no total — only components. Summing them is the
+// difference between a real number and "not in public layer" on every parcel in the county.
+function assessedTotal(a:Record<string,any>):number|null{
+  const t=pickVal(a,TOTALF); const tn=Number(t);
+  if(t!=null&&!Number.isNaN(tn)&&tn>0)return tn;
+  let sum=0,seen=false;
+  for(const f of PARTF){ const v=pickVal(a,[f]); const n=Number(v); if(v!=null&&!Number.isNaN(n)&&n>0){sum+=n;seen=true;} }
+  return seen?sum:null;
+}
+// A tax-exempt parcel (government, church, school) legitimately has no roll values. Say which.
+function exemptish(a:Record<string,any>):boolean{
+  const u=String(pickVal(a,["UseType","UseDescription","AssessDescription","usedesc","LANDUSE"])||"").toLowerCase();
+  return /government|exempt|church|school|public|municipal/.test(u);
+}
 function money(v:any){const n=Number(v);return v==null||Number.isNaN(n)||n===0?null:"$"+n.toLocaleString(undefined,{maximumFractionDigits:0})}
 function pickVal(a:Record<string,any>,names:string[]){for(const nm of names)for(const k in a){if(k.toLowerCase()===nm.toLowerCase()&&a[k]!=null&&String(a[k]).trim()!=="")return a[k]}return null}
 function drawShape(doc:any,geo:any,x:number,y:number,w:number,h:number){
@@ -143,7 +159,7 @@ export default function Home(){
     setAnaBusy(true);
     try{
       const uCode=pickVal(mt.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
-      const assessed=money(pickVal(mt.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value","parval","saleprice"]));
+      const assessed=money(assessedTotal(mt.attrs));
       const landv=money(pickVal(mt.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"]));
       const ar=await fetch("/api/analysis",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address:mt.address,apn:mt.apn,acreage:mt.acreage,county:mt.label,buildability:rep?.buildability,risk:rep?.risk,useCode:uCode,assessed,land:landv})});
       const aj=await ar.json();setAnalysis(aj.narrative||null);setAiFlag(!!aj.ai);
@@ -186,7 +202,7 @@ export default function Home(){
     const doc:any = new jsPDF({unit:"mm",format:"a4"});
     const W=210,M=15;let y=0;
     const V=(n:string[])=>money(pickVal(sel.attrs,n));
-    const vAssessed=V(["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value","parval","saleprice"]);
+    const vAssessed=money(assessedTotal(sel!.attrs));
     const vLand=V(["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"]);
     const uCode=pickVal(sel.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]);
     const bb=report?.buildability||{}, rr=report?.risk||{};
@@ -281,7 +297,7 @@ export default function Home(){
   if(demand.t==="Strong") score += 8; else if(demand.t==="Moderate") score += 3;
   score = Math.max(12, Math.min(97, Math.round(score)));
   const via = score>=80?{t:"High viability",c:"#16a34a"}:score>=62?{t:"Solid",c:"#2563eb"}:score>=45?{t:"Moderate",c:"#b45309"}:{t:"Challenged",c:"#dc2626"};
-  const val=sel?money(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","assd_total","total_value"])):null;
+  const val=sel?money(assessedTotal(sel.attrs)):null;
   const land=sel?money(pickVal(sel.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"])):null;
   const useCode=sel?pickVal(sel.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]):null;
 
@@ -490,9 +506,9 @@ export default function Home(){
             {H("Value & use on record")}
             {useCode && kv("Land use (county code)", String(useCode))}
             {kv("Density on record", b?.maxUnits!=null?<b>{b.maxUnits} dwelling{b.maxUnits===1?"":"s"} at listed density</b>:"—")}
-            {kv("Assessed value", val||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
-            {kv("Assessed land value", land||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
-            {val && kv("Value / acre", money((Number(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value","parval","saleprice"]))||0)/sel.acreage))}
+            {kv("Assessed value", val||<span style={{color:"#a89e94"}}>{exemptish(sel.attrs)?"tax-exempt parcel — not assessed":"not published by this county"}</span>)}
+            {kv("Assessed land value", land||<span style={{color:"#a89e94"}}>{exemptish(sel.attrs)?"tax-exempt parcel — not assessed":"not published by this county"}</span>)}
+            {val && kv("Value / acre", money((assessedTotal(sel.attrs)||0)/sel.acreage))}
             <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Public assessor values trail market and some counties don't publish them here. Size the opportunity from the max-dwellings figure × achievable per-unit value from comps.</div>
 
             {H("Area activity")}

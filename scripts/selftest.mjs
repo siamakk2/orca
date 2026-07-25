@@ -87,6 +87,7 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
   for (const s of SOURCES) { await introspect(s[0], s[1], s[2], s[3], s[4]); }
   // Real address queries — a single 1=1 sample row proves nothing about whether a layer is populated.
   const PROBES = [
+    ["la_zoning_at_cityhall", "https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", "GEOM:34.053571,-118.242993"],
     ["statewide_fire", "https://services.gis.ca.gov/arcgis/rest/services/Environment/Fire_Severity_Zones/MapServer/0/query", "1=1"],
     ["la_zoning_cfg", "https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", "1=1"],
     ["la_probe", "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", "UPPER(SitusStreet) LIKE '%SPRING%' AND SitusHouseNo='200'"],
@@ -95,7 +96,15 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
   ];
   for (const [slug, url, where] of PROBES) {
     try {
-      const p = new URLSearchParams({ where, outFields: "*", returnGeometry: "false", resultRecordCount: "3", f: "json" });
+      let p;
+      if (String(where).startsWith("GEOM:")) {
+        const [la, lo] = where.slice(5).split(",").map(Number);
+        p = new URLSearchParams({ geometry: JSON.stringify({ x: lo, y: la, spatialReference: { wkid: 4326 } }),
+          geometryType: "esriGeometryPoint", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
+          outFields: "*", returnGeometry: "false", resultRecordCount: "3", f: "json" });
+      } else {
+        p = new URLSearchParams({ where, outFields: "*", returnGeometry: "false", resultRecordCount: "3", f: "json" });
+      }
       const r = await fetch(`${url}?${p}`, { signal: AbortSignal.timeout(25000) });
       const j = JSON.parse(await r.text());
       const feats = (j && j.features) || [];
