@@ -14,6 +14,12 @@ const OV: Record<string, any> = {
     zoning: { url:"https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", pick:["ZONING","ZONE","zoning","LABEL","ZONE_CMPLT","ZONE_CLASS"] },
   },
 };
+/* Statewide fallbacks — only Napa and LA ever had county overlay configs, so every other
+   county returned no hazard data at all. These cover all 58. */
+const STATEWIDE = {
+  fire: { url:"https://services.gis.ca.gov/arcgis/rest/services/Environment/Fire_Severity_Zones/MapServer/0/query",
+          pick:["HAZ_CLASS","HAZ_CODE","FHSZ","CLASS","SRA","HAZARD","FHSZ_Description"] },
+};
 const FEMA = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query";
 
 /* summarized zoning rulebook — verify against county code + overlays */
@@ -99,13 +105,23 @@ export async function GET(req: NextRequest) {
     else { const z = f.attributes.FLD_ZONE, sfha = f.attributes.SFHA_TF; const hi = sfha === "T" || /^(A|V)/.test(z || ""); out.risk.flood = { level: hi ? "red" : "green", text: hi ? `Zone ${z} — Special Flood Hazard Area` : `Zone ${z || "X"} — minimal risk` }; }
   } catch { out.risk.flood = { level: "gray", text: "FEMA timed out — retry or verify" }; }
 
-  /* --- fire --- */
-  if (ov.fire) { try {
-    const f = (await atPoint(ov.fire.url, lon, lat))[0];
-    if (!f) out.risk.fire = { level: "green", text: "Not in a mapped hazard zone" };
-    else { const v = pick(f.attributes, ov.fire.pick); const s = String(v || "").toUpperCase(); out.risk.fire = { level: /VERY|HIGH/.test(s) ? "red" : "amber", text: v || "Mapped fire hazard" }; }
-  } catch { out.risk.fire = { level: "gray", text: "Check CAL FIRE FHSZ" }; } }
-  else out.risk.fire = { level: "gray", text: "Check CAL FIRE FHSZ" };
+  /* --- fire: county layer first, then the statewide CAL FIRE service --- */
+  {
+    const srcs = [ov.fire, STATEWIDE.fire].filter(Boolean);
+    let done = false;
+    for (const src of srcs) {
+      try {
+        const f = (await atPoint(src.url, lon, lat))[0];
+        if (!f) { out.risk.fire = { level: "green", text: "Not in a mapped hazard zone" }; done = true; break; }
+        const v = pick(f.attributes, src.pick);
+        const t = String(v || "").toUpperCase();
+        if (!t) continue;
+        out.risk.fire = { level: /VERY/.test(t) ? "red" : /HIGH/.test(t) ? "red" : /MODERATE/.test(t) ? "amber" : "amber", text: String(v) };
+        done = true; break;
+      } catch { /* try the next source */ }
+    }
+    if (!done) out.risk.fire = { level: "gray", text: "Check CAL FIRE FHSZ" };
+  }
 
   /* --- Williamson Act --- */
   if (ov.williamson) { try {

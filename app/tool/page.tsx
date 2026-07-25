@@ -464,6 +464,29 @@ export default function Home(){
               return kv(labels[key], repBusy&&!r?"…":r?<span style={S(r.level)}>{r.text}</span>:"—");
             })}
 
+            {H("Structure & assessor record")}
+            {(()=>{
+              const yr=pickVal(sel.attrs,["YearBuilt1","YearBuilt","EffectiveYear1","yearbuilt"]);
+              const sq=pickVal(sel.attrs,["SQFTmain1","SQFTmain","BuildingArea","sqft","LivingArea"]);
+              const bd=pickVal(sel.attrs,["Bedrooms1","Bedrooms","BEDROOMS","NBR_BEDROOMS"]);
+              const ba=pickVal(sel.attrs,["Bathrooms1","Bathrooms","BATHROOMS"]);
+              const un=pickVal(sel.attrs,["Units1","Units","NBR_UNITS"]);
+              const ud=pickVal(sel.attrs,["UseDescription","UseType","AssessDescription","usedesc"]);
+              const lg=pickVal(sel.attrs,["LegalDescription","LegalDescLine1"]);
+              const imp=money(pickVal(sel.attrs,["Roll_ImpValue","ImpValue","improvval","ImprovementValue"]));
+              const any=yr||sq||bd||ba||un||ud||lg||imp;
+              if(!any) return <div style={{fontSize:12.5,color:"#a89e94",padding:"8px 0",lineHeight:1.5}}>This county&apos;s parcel layer doesn&apos;t publish structure detail. Assessor records may still hold it — verify with the county.</div>;
+              return (<>
+                {ud && kv("Use on record", String(ud))}
+                {yr && kv("Year built", String(yr))}
+                {sq && kv("Building area", Number(sq).toLocaleString()+" sf")}
+                {(bd||ba) && kv("Bedrooms / bathrooms", `${bd??"—"} / ${ba??"—"}`)}
+                {un && kv("Units on record", String(un))}
+                {imp && kv("Improvement value", imp)}
+                {lg && kv("Legal description", <span style={{fontSize:12,color:"#6f6156"}}>{String(lg)}</span>)}
+              </>);
+            })()}
+
             {H("Value & use on record")}
             {useCode && kv("Land use (county code)", String(useCode))}
             {kv("Density on record", b?.maxUnits!=null?<b>{b.maxUnits} dwelling{b.maxUnits===1?"":"s"} at listed density</b>:"—")}

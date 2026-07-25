@@ -87,6 +87,8 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
   for (const s of SOURCES) { await introspect(s[0], s[1], s[2], s[3], s[4]); }
   // Real address queries — a single 1=1 sample row proves nothing about whether a layer is populated.
   const PROBES = [
+    ["statewide_fire", "https://services.gis.ca.gov/arcgis/rest/services/Environment/Fire_Severity_Zones/MapServer/0/query", "1=1"],
+    ["la_zoning_cfg", "https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", "1=1"],
     ["la_probe", "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", "UPPER(SitusStreet) LIKE '%SPRING%' AND SitusHouseNo='200'"],
     ["la_probe_any", "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", "SitusFullAddress IS NOT NULL"],
     ["sd_probe", "https://webmaps.sandiego.gov/arcgis/rest/services/GeocoderMerged/MapServer/1/query", "UPPER(SITUS_STREET) LIKE '%PACIFIC%' AND SITUS_ADDRESS='1600'"],
