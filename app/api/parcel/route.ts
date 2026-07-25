@@ -111,15 +111,18 @@ function streetWhere(src:Src,keys:string[]){
 }
 // House-number predicate, pushed into the query so a common street name can't bury the right lot
 // past the server's row cap. Zero-padded county fields ("0055") are covered too.
-function numWhere(src:Src,num:string){
-  const n=clean(num); if(!n)return null;
-  const c:string[]=[];
-  for(const f of src.num||[]){ c.push(`${f}='${n}'`); c.push(`${f}='${n.padStart(4,"0")}'`); if(/^\d+$/.test(n))c.push(`${f}=${n}`); }
-  for(const f of src.addr){ c.push(`UPPER(${f}) LIKE '${n} %'`); c.push(`UPPER(${f}) LIKE '${n.padStart(4,"0")} %'`); }
-  const u=[...new Set(c)];
-  return u.length?`(${u.join(" OR ")})`:null;
+function numWheres(src:Src,num:string):string[]{
+  const n=clean(num); if(!n)return [];
+  const out:string[]=[];
+  for(const f of src.num||[]){
+    out.push(`${f}='${n}'`);                                  // string-typed house-number field
+    if(/^\d+$/.test(n)) out.push(`${f}=${n}`);                // numeric-typed field (quoting throws)
+    if(n.length<4) out.push(`${f}='${n.padStart(4,"0")}'`);    // zero-padded string field
+  }
+  const like=src.addr.map(f=>`UPPER(${f}) LIKE '${n} %'`).join(" OR ");
+  if(like) out.push(`(${like})`);
+  return [...new Set(out)];
 }
-function numOf(addr:string){ const m=String(addr).trim().match(/^(\d+)/); return m?parseInt(m[1],10):null; }
 
 
 // ---- County E911 address-point locators (authoritative for private/rural roads) ----
@@ -250,9 +253,11 @@ export async function GET(req:NextRequest){
       let loose:{c:County;matches:any[]}|null=null;
       for(const c of tryC){ for(const src of c.sources){
         const sw=streetWhere(src,pa.keys); if(!sw)continue;
-        const nw=numWhere(src,pa.num);
         let feats:any[]=[];
-        if(nw){ try{ feats=await q(src,{where:`(${sw}) AND ${nw}`,resultRecordCount:"25"}); }catch{ feats=[]; } }
+        for(const nw of numWheres(src,pa.num)){
+          try{ feats=await q(src,{where:`(${sw}) AND (${nw})`,resultRecordCount:"25"}); }catch{ continue; }
+          if(feats.length) break;
+        }
         // broad pass: no row-cap ordering bias, and a cap high enough to reach the right lot
         if(!feats.length){ try{ feats=await q(src,{where:sw,resultRecordCount:"200"}); }catch{ continue; } }
         const all=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean) as any[];
