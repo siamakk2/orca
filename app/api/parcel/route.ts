@@ -111,6 +111,8 @@ function streetWhere(src:Src,keys:string[]){
 }
 // House-number predicate, pushed into the query so a common street name can't bury the right lot
 // past the server's row cap. Zero-padded county fields ("0055") are covered too.
+function numOf(addr:string){ const m=String(addr).trim().match(/^(\d+)/); return m?parseInt(m[1],10):null; }
+
 function numWheres(src:Src,num:string):string[]{
   const n=clean(num); if(!n)return [];
   const out:string[]=[];
