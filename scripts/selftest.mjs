@@ -113,6 +113,25 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
         count: feats.length, attrs: feats.slice(0, 2).map(f => f.attributes) });
     } catch (e) { await log("probe", { slug, thrown: String((e && e.message) || e) }); }
   }
+  // Generic URL probes: candidate sources for LA zoning and the neighbourhood-context layers.
+  // Anything that answers here gets wired; anything that doesn't is discarded, not guessed at again.
+  const URLS = [
+    ["cand_la_zoning", "https://services5.arcgis.com/7nsPwEMP38bSkCjy/ArcGIS/rest/services/Zoning/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=2&f=json"],
+    ["cand_la_landuse", "https://services5.arcgis.com/7nsPwEMP38bSkCjy/ArcGIS/rest/services/General_Plan_Land_Use/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=2&f=json"],
+    ["cand_la_cpa", "https://services5.arcgis.com/7nsPwEMP38bSkCjy/ArcGIS/rest/services/Community_Plan_Areas/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=2&f=json"],
+    ["cand_schools_ca", "https://services3.arcgis.com/fdvHcZVgB2QSRNkL/ArcGIS/rest/services/CA_Schools_2324/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=2&f=json"],
+    ["cand_hospitals_hifld", "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Hospital/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=2&f=json"],
+    ["cand_census_geocode", "https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=-118.242993&y=34.053571&benchmark=Public_AR_Current&vintage=Current_Current&format=json"],
+    ["cand_census_acs", "https://api.census.gov/data/2023/acs/acs5?get=NAME,B19013_001E,B25077_001E,B25003_002E,B25003_001E&for=tract:207400&in=state:06%20county:037"],
+  ];
+  for (const [slug, url] of URLS) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
+      const text = await r.text();
+      await log("url_probe", { slug, http: r.status, ok: r.ok, head: text.slice(0, 600) });
+    } catch (e) { await log("url_probe", { slug, thrown: String((e && e.message) || e) }); }
+  }
+
   await log("introspect_done", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local" });
   console.log("field introspection complete");
 })();
