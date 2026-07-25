@@ -85,7 +85,22 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
 (async () => {
   await log("introspect_start", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local", env: process.env.VERCEL_ENV || "local", n: SOURCES.length });
   for (const s of SOURCES) { await introspect(s[0], s[1], s[2], s[3], s[4]); }
-  for (const [slug, url] of CANDIDATES) { await introspect(slug, url, [], [], null); }
+  // Real address queries — a single 1=1 sample row proves nothing about whether a layer is populated.
+  const PROBES = [
+    ["la_probe", "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", "UPPER(SitusStreet) LIKE '%SPRING%' AND SitusHouseNo='200'"],
+    ["la_probe_any", "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", "SitusFullAddress IS NOT NULL"],
+    ["sd_probe", "https://webmaps.sandiego.gov/arcgis/rest/services/GeocoderMerged/MapServer/1/query", "UPPER(SITUS_STREET) LIKE '%PACIFIC%' AND SITUS_ADDRESS='1600'"],
+  ];
+  for (const [slug, url, where] of PROBES) {
+    try {
+      const p = new URLSearchParams({ where, outFields: "*", returnGeometry: "false", resultRecordCount: "3", f: "json" });
+      const r = await fetch(`${url}?${p}`, { signal: AbortSignal.timeout(25000) });
+      const j = JSON.parse(await r.text());
+      const feats = (j && j.features) || [];
+      await log("probe", { slug, http: r.status, error: (j && j.error && j.error.message) || null,
+        count: feats.length, attrs: feats.slice(0, 2).map(f => f.attributes) });
+    } catch (e) { await log("probe", { slug, thrown: String((e && e.message) || e) }); }
+  }
   await log("introspect_done", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local" });
   console.log("field introspection complete");
 })();
