@@ -87,6 +87,7 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
   for (const s of SOURCES) { await introspect(s[0], s[1], s[2], s[3], s[4]); }
   // Real address queries — a single 1=1 sample row proves nothing about whether a layer is populated.
   const PROBES = [
+    ["zimas_at_cityhall", "https://zimas.lacity.org/arcgis/rest/services/D_BASEMAPS/MapServer/11/query", "GEOM:34.053571,-118.242993"],
     ["la_zoning_at_cityhall", "https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", "GEOM:34.053571,-118.242993"],
     ["statewide_fire", "https://services.gis.ca.gov/arcgis/rest/services/Environment/Fire_Severity_Zones/MapServer/0/query", "1=1"],
     ["la_zoning_cfg", "https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", "1=1"],

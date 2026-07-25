@@ -11,7 +11,12 @@ const OV: Record<string, any> = {
     williamson: { url:"https://gis.napacounty.gov/arcgis/rest/services/Hosted/Williamson_Act_Parcels_Public/FeatureServer/0/query", pick:["*"] },
   },
   los_angeles: {
-    zoning: { url:"https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", pick:["ZONING_CODE","ZONING","ZONE","zoning","LABEL","ZONE_CMPLT","ZONE_CLASS","CATEGORY"] },
+    // ZIMAS is the City of LA's own zoning layer and covers the city including downtown; the
+    // previously configured layer returns nothing there. Chained so other jurisdictions still resolve.
+    zoningChain: [
+      { url:"https://zimas.lacity.org/arcgis/rest/services/D_BASEMAPS/MapServer/11/query", pick:["ZONE_CMPLT","ZONE_CLASS","ZONELEGEND","ZONE_CODE"] },
+      { url:"https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", pick:["ZONING_CODE","ZONING","ZONE","zoning","LABEL","ZONE_CMPLT","ZONE_CLASS","CATEGORY"] },
+    ],
   },
 };
 /* Statewide fallbacks — only Napa and LA ever had county overlay configs, so every other
@@ -79,9 +84,14 @@ export async function GET(req: NextRequest) {
   /* --- zoning + buildability --- */
   try {
     let code: string | null = zoneParam || null;
-    if (!code && ov.zoning) {
-      const f = (await atPoint(ov.zoning.url, lon, lat))[0];
-      const raw = f ? pick(f.attributes, ov.zoning.pick) : null;
+    if (!code && (ov.zoningChain || ov.zoning)) {
+      const chain = ov.zoningChain || [ov.zoning];
+      let f: any = null, src: any = null;
+      for (const c of chain) {
+        try { const hit = (await atPoint(c.url, lon, lat))[0]; if (hit && pick(hit.attributes, c.pick)) { f = hit; src = c; break; } }
+        catch { /* next source in the chain */ }
+      }
+      const raw = f && src ? pick(f.attributes, src.pick) : null;
       code = raw ? String(raw).trim().toUpperCase() : null;
     }
     const book = ZONES[county] || {};
