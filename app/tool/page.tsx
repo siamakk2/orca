@@ -230,7 +230,7 @@ export default function Home(){
     sec("1.  What You Can Build");
     row("Zoning district",bb.code||"Not returned");
     if(bb.name)row("District",bb.name); if(bb.use)row("Primary use",bb.use); if(bb.minLot)row("Min lot / density",bb.minLot);
-    row("Max dwellings (by density)",bb.maxUnits!=null?bb.maxUnits:"—",[37,99,235]);
+    row("Density allowance on record",bb.maxUnits!=null?bb.maxUnits:"—",[37,99,235]);
     if(bb.envelope)row("Est. buildable footprint",bb.envelope.toLocaleString()+" sf");
     row("ADU potential","1 ADU + 1 JADU likely (CA state law)");
     if(zoning){
@@ -285,9 +285,9 @@ export default function Home(){
   const land=sel?money(pickVal(sel.attrs,["Roll_LandValue","LandValue","land_val","LAND_VAL","land_value","landval"])):null;
   const useCode=sel?pickVal(sel.attrs,["usedesc","landuse1","LANDUSE","UseType","use_code","usecode","LandUse"]):null;
 
-  const S=(bg:string)=>({display:"inline-block",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,background:BC[bg]||BC.gray,color:BT[bg]||BT.gray});
-  const kv=(k:string,v:any)=>(<div style={{display:"flex",justifyContent:"space-between",gap:12,padding:"8px 0",borderBottom:"1px solid #f4f6f9",fontSize:13}}><span style={{color:"#64748b"}}>{k}</span><span style={{fontWeight:600,textAlign:"right"}}>{v}</span></div>);
-  const H=(t:string)=>(<div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#1d4ed8",margin:"16px 0 4px"}}>{t}</div>);
+  const S=(bg:string)=>({display:"inline-block",padding:"3px 10px",borderRadius:999,fontSize:11,fontWeight:600,letterSpacing:".01em",background:BC[bg]||BC.gray,color:BT[bg]||BT.gray});
+  const kv=(k:string,v:any)=>(<div style={{display:"flex",justifyContent:"space-between",gap:14,padding:"10px 0",borderBottom:"1px solid #f3efe9",fontSize:13.5,lineHeight:1.45}}><span style={{color:"#8b8177"}}>{k}</span><span style={{fontWeight:500,textAlign:"right",color:"#43392f"}}>{v}</span></div>);
+  const H=(t:string)=>(<div style={{display:"flex",alignItems:"center",gap:10,margin:"26px 0 4px"}}><span style={{fontSize:10.5,fontWeight:600,letterSpacing:".13em",textTransform:"uppercase",color:"#a89e94",whiteSpace:"nowrap"}}>{t}</span><span style={{flex:1,height:1,background:"#ece6de"}}/></div>);
 
   return (
     <div style={{position:"relative",height:"100vh",width:"100vw",overflow:"hidden",fontFamily:"system-ui,-apple-system,sans-serif"}}>
@@ -313,8 +313,8 @@ export default function Home(){
           <style dangerouslySetInnerHTML={{__html:INTRO_CSS}}/>
           <div className="k2-card">
             <div className="k2-eyebrow">Land due-diligence · California</div>
-            <h1 className="k2-h1">Know what you can build<br/><em>before</em> you buy the land.</h1>
-            <p className="k2-sub">Enter any California address or APN. K2 pulls the parcel, reads the zoning, checks live flood and fire maps, and returns an investor-grade report in under two minutes.</p>
+            <h1 className="k2-h1">Know everything on record<br/><em>before</em> you buy the land.</h1>
+            <p className="k2-sub">Enter any California address or APN. K2 pulls the parcel record, the zoning on file, and live flood and fire data into one report — so you know what the record says before you commit.</p>
 
             <div className="k2-field">
               <input
@@ -335,10 +335,10 @@ export default function Home(){
             </div>
 
             <div className="k2-gets">
-              {[["Zoning & density","allowed uses, max dwellings, buildable envelope"],
-                ["Deal-killers","FEMA flood, CAL FIRE hazard, Williamson Act, terrain"],
+              {[["Zoning on record","district, density standards, code citations"],
+                ["Hazards & constraints","FEMA flood, CAL FIRE hazard, Williamson Act, terrain"],
                 ["Value & use","assessed value, land use, development capacity"],
-                ["Investor analysis","a written bottom-line read on the parcel"]].map(([t,d])=>(
+                ["Investor analysis","a written read on what the record implies"]].map(([t,d])=>(
                 <div className="k2-get" key={t}><b>{t}</b><span>{d}</span></div>
               ))}
             </div>
@@ -368,31 +368,35 @@ export default function Home(){
       )}
 
       {sel && (
-        <div style={{position:"absolute",top:72,left:12,zIndex:10,width:380,maxWidth:"94vw",maxHeight:"84vh",overflowY:"auto",background:"#fff",borderRadius:14,boxShadow:"0 10px 30px rgba(0,0,0,.2)"}}>
-          <div style={{padding:"14px 18px",borderBottom:"1px solid #eef2f6",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div>
-              <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#1d4ed8"}}>{sel.label} County · Feasibility</div>
-              <div style={{fontSize:18,fontWeight:800,marginTop:2}}>{sel.address||"(vacant — no address on file)"}</div>
-              <div style={{fontSize:12,color:"#64748b",fontFamily:"monospace",marginTop:2}}>APN {sel.apn} · {sel.acreage} acres</div>
+        <div style={{position:"absolute",top:72,left:12,zIndex:10,width:420,maxWidth:"94vw",maxHeight:"84vh",overflowY:"auto",background:"#fff",border:"1px solid #ece6de",borderRadius:16,boxShadow:"0 18px 48px rgba(67,57,47,.20)"}}>
+          <div style={{position:"sticky",top:0,zIndex:2,background:"#fff",padding:"16px 20px 14px",borderBottom:"1px solid #ece6de",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,borderRadius:"16px 16px 0 0"}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".13em",textTransform:"uppercase",color:"#2f74c0"}}>{sel.label} County · property record</div>
+              <div style={{fontFamily:"Georgia,serif",fontSize:21,lineHeight:1.2,marginTop:5,color:"#43392f"}}>{sel.address||"Vacant — no address on file"}</div>
+              <div style={{fontSize:11.5,color:"#a89e94",fontFamily:"ui-monospace,monospace",marginTop:4}}>APN {sel.apn} · {sel.acreage} acres</div>
             </div>
             <div style={{display:"flex",gap:6,flexShrink:0}}>
-              <button onClick={downloadPDF} disabled={repBusy} title="Download investor PDF" style={{border:"none",background:"#1d4ed8",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,opacity:repBusy?.5:1}}>PDF</button>
-              <button onClick={()=>{setSel(null);setReport(null);draw(null);setMsg("Search an address or APN, or tap the map.")}} style={{border:"none",background:"#f1f5f9",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>×</button>
+              <button onClick={downloadPDF} disabled={repBusy} title="Download the full report as a PDF" style={{border:"none",background:"#2f74c0",color:"#fff",borderRadius:9,padding:"7px 13px",cursor:"pointer",fontSize:12,fontWeight:600,opacity:repBusy?.5:1}}>PDF</button>
+              <button onClick={()=>{setSel(null);setReport(null);draw(null);setMsg("Search an address or APN, or tap the map.")}} aria-label="Close report" style={{border:"1px solid #ece6de",background:"#faf8f4",borderRadius:9,width:31,height:31,cursor:"pointer",fontSize:15,color:"#8b8177"}}>×</button>
             </div>
           </div>
 
           <div style={{padding:"0 18px 18px"}}>
             {report && (
-              <div style={{marginTop:14,display:"flex",gap:10}}>
-                <div style={{flex:"0 0 118px",background:"#0f172a",borderRadius:12,padding:"12px 14px",color:"#fff"}}>
-                  <div style={{fontSize:9,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",color:"#94a3b8"}}>Project Score</div>
-                  <div style={{fontSize:30,fontWeight:800,lineHeight:1.1,marginTop:2}}>{score}<span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>/100</span></div>
-                  <div style={{fontSize:11,fontWeight:700,marginTop:2,color:via.c==="#2563eb"?"#7dd3fc":via.c==="#16a34a"?"#86efac":via.c==="#b45309"?"#fcd34d":"#fca5a5"}}>{via.t}</div>
+              <div style={{marginTop:16,border:"1px solid #ece6de",borderRadius:14,overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"center",gap:16,padding:"16px 18px",background:"#faf8f4"}}>
+                  <div style={{lineHeight:1}}>
+                    <div style={{fontFamily:"Georgia,serif",fontSize:40,color:"#43392f",lineHeight:1}}>{score}<span style={{fontSize:15,color:"#a89e94"}}>/100</span></div>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".13em",textTransform:"uppercase",color:"#a89e94"}}>Composite read</div>
+                    <div style={{fontSize:15,fontWeight:600,color:via.c,marginTop:3}}>{via.t}</div>
+                  </div>
                 </div>
-                <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:"#ece6de",borderTop:"1px solid #ece6de"}}>
                   {([["Development",potential],["Regulatory risk",regRisk],["Market demand",demand]] as [string,{t:string;c:string}][]).map(([lab,k])=>(
-                    <div key={lab} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f8fafc",borderRadius:8,padding:"7px 11px"}}>
-                      <span style={{fontSize:11.5,color:"#64748b",fontWeight:500}}>{lab}</span>
+                    <div key={lab} style={{background:"#fff",padding:"11px 12px",display:"flex",flexDirection:"column",gap:5,alignItems:"flex-start"}}>
+                      <span style={{fontSize:10.5,color:"#a89e94",letterSpacing:".04em"}}>{lab}</span>
                       <span style={S(k.c)}>{k.t}</span>
                     </div>
                   ))}
@@ -400,74 +404,75 @@ export default function Home(){
               </div>
             )}
 
-            <div style={{marginTop:14,padding:"14px 16px",background:"linear-gradient(135deg,#eff6ff,#f0f9ff)",border:"1px solid #dbeafe",borderRadius:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#2563eb",marginBottom:8}}>
-                <span>◆ Investor Analysis</span>{aiFlag&&<span style={{fontSize:9,background:"#2563eb",color:"#fff",padding:"1px 6px",borderRadius:999}}>AI</span>}
+            <div style={{marginTop:18,padding:"16px 18px",background:"#faf8f4",border:"1px solid #ece6de",borderRadius:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:9}}>
+                <span style={{fontSize:10.5,fontWeight:600,letterSpacing:".13em",textTransform:"uppercase",color:"#a89e94"}}>The read</span>
+                {aiFlag&&<span style={{fontSize:9,fontWeight:600,letterSpacing:".08em",background:"#eaf3fc",color:"#2f74c0",padding:"2px 7px",borderRadius:999}}>AI</span>}
               </div>
-              {anaBusy&&!analysis ? <div style={{fontSize:13,color:"#64748b"}}>Analyzing the deal…</div>
-                : analysis ? <div style={{fontSize:13,lineHeight:1.6,color:"#1e293b",whiteSpace:"pre-wrap"}}>{analysis.replace(/\*\*/g,"")}</div>
-                : <div style={{fontSize:13,color:"#94a3b8"}}>Analysis unavailable.</div>}
+              {anaBusy&&!analysis ? <div style={{fontSize:13.5,color:"#8b8177"}}>Reading the parcel…</div>
+                : analysis ? <div style={{fontFamily:"Georgia,serif",fontSize:14.5,lineHeight:1.68,color:"#43392f",whiteSpace:"pre-wrap"}}>{analysis.replace(/\*\*/g,"")}</div>
+                : <div style={{fontSize:13.5,color:"#a89e94"}}>Analysis unavailable.</div>}
             </div>
 
-            {H("① What you can build")}
+            {H("Zoning on record")}
             {repBusy && !report ? <div style={{fontSize:13,color:"#94a3b8",padding:"8px 0"}}>Reading zoning…</div> : b?.error ? <div style={{fontSize:13,color:"#94a3b8",padding:"8px 0"}}>Zoning layer didn't respond — verify with county.</div> : (<>
               {kv("Zoning district", b?.code ? <span style={S("gray")}>{b.code}</span> : <span style={S("amber")}>not returned</span>)}
               {b?.name && kv("District", b.name)}
               {b?.use && kv("Primary use", b.use)}
               {b?.minLot && kv("Min. parcel size (this zone)", b.minLot)}
-              {kv("Max dwellings (by density)", <span style={{fontSize:18,fontWeight:800,color:"#1d4ed8"}}>{b?.maxUnits!=null?b.maxUnits:"—"}</span>)}
+              {kv("Density allowance on record", <span style={{fontSize:18,fontWeight:800,color:"#1d4ed8"}}>{b?.maxUnits!=null?b.maxUnits:"—"}</span>)}
               {b?.envelope && kv("Est. buildable footprint", b.envelope.toLocaleString()+" sf")}
-              {kv("ADU potential", <span style={S("green")}>1 ADU + 1 JADU likely</span>)}
+              {kv("ADU allowance", <span style={{color:"#8b8177"}}>state law generally permits ADUs — confirm locally</span>)}
               {b?.cite && <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Density/setbacks summarized from {b.cite}; confirm overlays at permitting.</div>}
             </>)}
 
-            <div style={{marginTop:16,padding:"14px 16px",background:"linear-gradient(135deg,#faf5ff,#f5f3ff)",border:"1px solid #e9d5ff",borderRadius:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#7c3aed",marginBottom:8}}>
-                <span>⬡ Zoning &amp; Entitlement Intelligence</span>
-                <span style={{fontSize:9,background:"#7c3aed",color:"#fff",padding:"1px 6px",borderRadius:999}}>AI</span>
-                {zoning?.confidence && <span style={{fontSize:9,marginLeft:"auto",fontWeight:700,padding:"1px 7px",borderRadius:999,background:zoning.confidence==="high"?"#dcfce7":zoning.confidence==="medium"?"#fef3c7":"#f1f5f9",color:zoning.confidence==="high"?"#15803d":zoning.confidence==="medium"?"#b45309":"#64748b"}}>{zoning.confidence} confidence</span>}
+            <div style={{marginTop:20,padding:"16px 18px",background:"#fff",border:"1px solid #ece6de",borderRadius:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:9}}>
+                <span style={{fontSize:10.5,fontWeight:600,letterSpacing:".13em",textTransform:"uppercase",color:"#a89e94"}}>Zoning &amp; entitlement intelligence</span>
+                <span style={{fontSize:9,fontWeight:600,letterSpacing:".08em",background:"#eaf3fc",color:"#2f74c0",padding:"2px 7px",borderRadius:999}}>AI</span>
+                {zoning?.confidence && <span style={{fontSize:9.5,marginLeft:"auto",fontWeight:600,padding:"2px 8px",borderRadius:999,background:zoning.confidence==="high"?"#dcfce7":zoning.confidence==="medium"?"#fef3c7":"#f1efe8",color:zoning.confidence==="high"?"#15803d":zoning.confidence==="medium"?"#92400e":"#8b8177"}}>{zoning.confidence} confidence</span>}
               </div>
               {znBusy && !zoning ? <div style={{fontSize:13,color:"#64748b"}}>Researching the governing zoning code, general plan, and state overrides…</div>
                 : zoning ? <div style={{display:"flex",flexDirection:"column",gap:10}}>
                     <div>
                       <div style={{fontSize:14,fontWeight:700,color:"#1e293b"}}>{zoning.zone||"Zone not confirmed"}</div>
-                      {zoning.jurisdiction && <div style={{fontSize:12,color:"#7c3aed"}}>{zoning.jurisdiction}</div>}
+                      {zoning.jurisdiction && <div style={{fontSize:12,color:"#2f74c0"}}>{zoning.jurisdiction}</div>}
                     </div>
                     {zoning.summary && <div style={{fontSize:13,lineHeight:1.6,color:"#1e293b"}}>{zoning.summary}</div>}
                     {Array.isArray(zoning.permittedUses)&&zoning.permittedUses.length>0 && <div>
                       <div style={{fontSize:10,fontWeight:700,letterSpacing:.4,textTransform:"uppercase",color:"#94a3b8"}}>Permitted uses</div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:5}}>{zoning.permittedUses.map((u:string,i:number)=><span key={i} style={{fontSize:11,background:"#fff",border:"1px solid #e9d5ff",color:"#334155",padding:"3px 9px",borderRadius:999}}>{u}</span>)}</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:5}}>{zoning.permittedUses.map((u:string,i:number)=><span key={i} style={{fontSize:11,background:"#fff",border:"1px solid #ece6de",color:"#43392f",padding:"3px 9px",borderRadius:999}}>{u}</span>)}</div>
                     </div>}
                     {Array.isArray(zoning.standards)&&zoning.standards.filter((s:any)=>s?.value).length>0 && <div style={{display:"flex",flexDirection:"column",gap:2}}>
                       {zoning.standards.filter((s:any)=>s?.value).map((s:any,i:number)=>kv(s.label,String(s.value)))}
                     </div>}
-                    {zoning.adu && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#7c3aed"}}>ADUs — </b>{zoning.adu}</div>}
-                    {zoning.opportunities && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#7c3aed"}}>Upside — </b>{zoning.opportunities}</div>}
-                    {zoning.process && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#7c3aed"}}>Process — </b>{zoning.process}</div>}
+                    {zoning.adu && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#2f74c0"}}>ADUs — </b>{zoning.adu}</div>}
+                    {zoning.opportunities && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#2f74c0"}}>Upside — </b>{zoning.opportunities}</div>}
+                    {zoning.process && <div style={{fontSize:12.5,lineHeight:1.55,color:"#1e293b"}}><b style={{color:"#2f74c0"}}>Process — </b>{zoning.process}</div>}
                     {Array.isArray(zoning.flags)&&zoning.flags.length>0 && <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 11px"}}>
                       <div style={{fontSize:10.5,fontWeight:800,letterSpacing:.3,textTransform:"uppercase",color:"#c2410c",marginBottom:4}}>Could stop or delay a deal</div>
                       {zoning.flags.map((f:string,i:number)=><div key={i} style={{fontSize:12,color:"#9a3412",lineHeight:1.5}}>• {f}</div>)}
                     </div>}
-                    {znSources.length>0 && <div style={{fontSize:11,color:"#a78bda"}}>Sources: {znSources.join(" · ")}</div>}
+                    {znSources.length>0 && <div style={{fontSize:11,color:"#a89e94"}}>Sources: {znSources.join(" · ")}</div>}
                   </div>
                 : <div style={{fontSize:12.5,color:"#64748b",lineHeight:1.55}}>Couldn't pin the exact governing zone from public sources for this parcel — treat zoning as unconfirmed and verify the district and standards directly with the planning department. (Turns on with an Anthropic API key.)</div>}
             </div>
 
-            {H("② What could stop a deal")}
+            {H("Hazards & constraints")}
             {["flood","fire","williamson","terrain"].map(key=>{
               const r=rk?.[key]; const labels:Record<string,string>={flood:"Flood zone (FEMA)",fire:"Fire hazard",williamson:"Williamson Act",terrain:"Terrain"};
               return kv(labels[key], repBusy&&!r?"…":r?<span style={S(r.level)}>{r.text}</span>:"—");
             })}
 
-            {H("③ Is it worth it")}
+            {H("Value & use on record")}
             {useCode && kv("Land use (county code)", String(useCode))}
-            {kv("Development capacity", b?.maxUnits!=null?<b>{b.maxUnits} dwelling{b.maxUnits===1?"":"s"} by right</b>:"—")}
+            {kv("Density on record", b?.maxUnits!=null?<b>{b.maxUnits} dwelling{b.maxUnits===1?"":"s"} at listed density</b>:"—")}
             {kv("Assessed value", val||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
             {kv("Assessed land value", land||<span style={{color:"#94a3b8"}}>not in public layer</span>)}
             {val && kv("Value / acre", money((Number(pickVal(sel.attrs,["Roll_totalValue","TotalValue","total_val","NetValue","AssessedValue","ASSD_TOTAL","total_value","parval","saleprice"]))||0)/sel.acreage))}
             <div style={{fontSize:11,color:"#94a3b8",marginTop:6}}>Public assessor values trail market and some counties don't publish them here. Size the opportunity from the max-dwellings figure × achievable per-unit value from comps.</div>
 
-            {H("④ What's happening nearby")}
+            {H("Area activity")}
             {!actEnabled ? <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5}}>Area development intelligence turns on with an Anthropic API key — it web-searches for nearby data centers, industrial, and commercial projects and reads what they mean for land value here.</div>
               : actBusy && !activity ? <div style={{fontSize:13,color:"#64748b"}}>Scanning the area for major developments…</div>
               : activity ? <><div style={{fontSize:13,lineHeight:1.6,color:"#1e293b",whiteSpace:"pre-wrap"}}>{activity}</div>{actSources.length>0 && <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Sources: {actSources.join(" · ")}</div>}</>

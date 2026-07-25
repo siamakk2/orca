@@ -25,8 +25,8 @@ export default function Landing() {
         <div className="wrap hero-grid">
           <div>
             <div className="eyebrow">LAND DUE-DILIGENCE · AUTOMATED · STATEWIDE CALIFORNIA</div>
-            <h1>Know what you can build<br/><em>before</em> you buy the land.</h1>
-            <p className="lead">Type an address anywhere in California. In under two minutes K2 pulls the parcel, cross-references live flood and fire maps, reads the zoning, and hands you an investor-grade report — what you can build, what could kill the deal, and whether it's worth it.</p>
+            <h1>Know everything on record<br/><em>before</em> you buy the land.</h1>
+            <p className="lead">Type an address anywhere in California. In under two minutes K2 pulls the parcel record, cross-references live flood and fire maps, reads the zoning on file, and hands you one report — every public fact about the property, in front of you before you commit.</p>
             <div className="cta-row">
               <Link className="btn btn-lg" href="/tool">Analyze a property →</Link>
               <a className="btn btn-ghost btn-lg" href="#how">See how it works</a>
@@ -38,7 +38,7 @@ export default function Landing() {
               <span className="hc-dot" /> <b>20 Longhorn Ridge Rd</b> · Napa
             </div>
             <div className="hc-row"><span>Zoning</span><b>AW — Agricultural Watershed</b></div>
-            <div className="hc-row"><span>Max dwellings</span><b className="accent">1 + ADU</b></div>
+            <div className="hc-row"><span>Density on record</span><b className="accent">1 dwelling + ADU</b></div>
             <div className="hc-row"><span>Flood (FEMA)</span><b className="ok">Zone X · minimal</b></div>
             <div className="hc-row"><span>Fire hazard</span><b className="warn">Very High</b></div>
             <div className="hc-analysis">"A single-estate or agricultural hold — upside is scenic value and ADU income, not density. Fire rating is the main carrying-cost risk…"</div>
@@ -64,7 +64,7 @@ export default function Landing() {
           <div className="cards">
             <div className="card">
               <div className="cn">01</div>
-              <h3>What you can build</h3>
+              <h3>What the record shows</h3>
               <p>The parcel's zoning district and allowed uses, minimum lot size and density, the maximum dwellings by right, ADU potential, and the buildable envelope — pulled live and read against the county code.</p>
             </div>
             <div className="card">

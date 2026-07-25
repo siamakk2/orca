@@ -3,7 +3,7 @@ import "./globals.css";
 
 const SITE = "https://orca-siamakk2-8490s-projects.vercel.app";
 const TITLE = "K2 Investment Parcel Finder — California Land Feasibility";
-const DESC = "Type any California address and get an investor-grade land feasibility report in under two minutes — what you can build, what could stop the deal, and whether it's worth it. Zoning, flood, fire, and AI analysis with a downloadable PDF.";
+const DESC = "Type any California address and get a complete property record in under two minutes — zoning on file, FEMA flood, CAL FIRE hazard, Williamson Act, assessed value, and an AI read of what the record implies. Informational only; verify with the county.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
