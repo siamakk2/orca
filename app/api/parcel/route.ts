@@ -9,7 +9,7 @@ const SB_DIAG_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIs
 function dlog(tag:string,data:any){ try{ fetch(SB_DIAG,{method:"POST",headers:{apikey:SB_DIAG_KEY,Authorization:`Bearer ${SB_DIAG_KEY}`,"Content-Type":"application/json",Prefer:"return=minimal"},body:JSON.stringify({tag,data})}).catch(()=>{}); }catch{} }
 
 
-type Src = { url: string; apn: string[]; addr: string[]; num?: string[] };
+type Src = { url: string; apn: string[]; addr: string[]; num?: string[]; parts?: string[] };
 type County = { slug: string; label: string; bbox: [number,number,number,number]; sources: Src[] };
 
 const COUNTIES: County[] = [
@@ -23,7 +23,7 @@ const COUNTIES: County[] = [
     { url:"https://www.ocgis.com/arcpub/rest/services/Map_Layers/Parcels/MapServer/0/query", apn:["ASSESSMENT_NO"], addr:["SITE_ADDRESS"] },
   ]},
   { slug:"san_diego", label:"San Diego", bbox:[-117.61,32.52,-116.08,33.51], sources:[
-    { url:"https://webmaps.sandiego.gov/arcgis/rest/services/GeocoderMerged/MapServer/1/query", apn:["APN","APN_8"], addr:["SITUS_STREET"], num:["SITUS_ADDRESS"] },
+    { url:"https://webmaps.sandiego.gov/arcgis/rest/services/GeocoderMerged/MapServer/1/query", apn:["APN","APN_8"], addr:["SITUS_STREET"], num:["SITUS_ADDRESS"], parts:["SITUS_ADDRESS","SITUS_PRE_DIR","SITUS_STREET","SITUS_SUFFIX","SITUS_POST_DIR"] },
   ]},
   { slug:"san_bernardino", label:"San Bernardino", bbox:[-117.81,33.86,-114.13,35.81], sources:[
     { url:"https://services.arcgis.com/aA3snZwJfFkVyDuP/arcgis/rest/services/Parcels_for_San_Bernardino_County/FeatureServer/0/query", apn:["ParcelNumber"], addr:["SitusAddress","Address"] },
@@ -38,7 +38,7 @@ const COUNTIES: County[] = [
     { url:"https://services5.arcgis.com/ROBnTHSNjoZ2Wm1P/arcgis/rest/services/Parcels/FeatureServer/0/query", apn:["APN"], addr:["SitusAddress","SitusStreetName"] },
   ]},
   { slug:"contra_costa", label:"Contra Costa", bbox:[-122.44,37.71,-121.53,38.10], sources:[
-    { url:"https://gis.cccounty.us/arcgis/rest/services/CCMAP/Assessment_Parcels_ArcPro/MapServer/0/query", apn:["APN"], addr:["N_STR_NM"], num:["N_STR_NBR"] },
+    { url:"https://gis.cccounty.us/arcgis/rest/services/CCMAP/Assessment_Parcels_ArcPro/MapServer/0/query", apn:["APN"], addr:["full_address_display","N_STR_NM"], num:["N_STR_NBR"], parts:["full_address_display"] },
   ]},
   { slug:"ventura", label:"Ventura", bbox:[-119.65,33.98,-118.63,34.90], sources:[
     { url:"https://maps.ventura.org/arcgis/rest/services/SDs/Parcels/MapServer/0/query", apn:["APN","APN10"], addr:["SITUS","SITUS_STRE"] },
@@ -73,8 +73,11 @@ function rec(f:any,src:Src,label:string){
   if(!f?.geometry?.rings)return null;
   const g=rings2geo(f.geometry.rings);
   const a=f.attributes||{};
-  const st=first(a,src.addr); const num=src.num?first(a,src.num):null;
-  const address = (num&&st)?`${num} ${st}` : (st||num||"");
+  // counties that split the address across fields (number / pre-dir / street / suffix / post-dir)
+  // need every part joined, or the suffix is silently dropped ("1640 CHASE" for "1640 Chase Ln").
+  let address="";
+  if(src.parts){ address=src.parts.map(f=>a?.[f]).filter(v=>v!=null&&String(v).trim()!==""&&String(v).trim().toLowerCase()!=="null").map(v=>String(v).trim()).join(" "); }
+  if(!address){ const st=first(a,src.addr); const num=src.num?first(a,src.num):null; address=(num&&st)?`${num} ${st}`:(st||num||""); }
   const zoning=first(a,["Zoning","ZONING","ZONE","zoning","ZONE_CODE","zone_code","zone","ZONE_"]);
   return {apn:first(a,src.apn)||"—",address,acreage:acres(g),label,geometry:g,attrs:a,zoning:zoning||null};
 }

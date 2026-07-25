@@ -30,6 +30,17 @@ const SOURCES = [
   ["sonoma", "https://socogis.sonomacounty.ca.gov/map/rest/services/OWTSPublic/Cities_GIS_Parcel_Base/FeatureServer/0/query", ["APN"], ["SitusFormatted1","SitusStreetName"], null],
 ];
 
+// LACounty_Cache returns null for every attribute (tile cache, not a queryable record layer) and the
+// San Bernardino layer publishes no situs fields at all. Probe candidate replacements so the mapping
+// can be corrected from evidence on the next pass.
+const CANDIDATES = [
+  ["la_cand_dynamic", "https://public.gis.lacounty.gov/public/rest/services/LACounty_Dynamic/Parcel/MapServer/0/query"],
+  ["la_cand_parcels", "https://public.gis.lacounty.gov/public/rest/services/PARCEL/MapServer/0/query"],
+  ["la_cand_assessor", "https://services5.arcgis.com/3lQzeQmwoglGXmqz/arcgis/rest/services/LACounty_Parcels/FeatureServer/0/query"],
+  ["sb_cand_assessor", "https://services.arcgis.com/aA3snZwJfFkVyDuP/arcgis/rest/services/Assessor_Parcels/FeatureServer/0/query"],
+  ["sb_cand_open", "https://open.sbcounty.gov/arcgis/rest/services/Parcels/MapServer/0/query"],
+];
+
 const ADDRISH = /(situs|addr|street|str_|st_nm|house|hous|nbr|num|site)/i;
 const APNISH = /(apn|ain|parcel|asmt|assess)/i;
 
@@ -74,6 +85,7 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
 (async () => {
   await log("introspect_start", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local", env: process.env.VERCEL_ENV || "local", n: SOURCES.length });
   for (const s of SOURCES) { await introspect(s[0], s[1], s[2], s[3], s[4]); }
+  for (const [slug, url] of CANDIDATES) { await introspect(slug, url, [], [], null); }
   await log("introspect_done", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local" });
   console.log("field introspection complete");
 })();
