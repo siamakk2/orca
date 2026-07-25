@@ -1,5 +1,8 @@
-// Runs on Vercel at build time (postbuild). Tests the Napa address→parcel chain
-// from inside Vercel's network and reports raw results to Supabase for diagnosis.
+// Runs on Vercel at build time (postbuild), inside Vercel's network, and reports to Supabase.
+// Purpose: introspect every county parcel layer and record its ACTUAL field names, so the
+// address/APN field mappings in app/api/parcel/route.ts can be corrected from evidence
+// instead of guessed. Blank addresses in the UI almost always mean a mapped field
+// doesn't exist on that layer.
 const SB = "https://rlvibtvyaunuiwizqigj.supabase.co/rest/v1/orca_diag";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsdmlidHZ5YXVudWl3aXpxaWdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MjExMDMsImV4cCI6MjA5Nzk5NzEwM30.rnqUIK4rhKCBkcWZLY8qqF8lKqu1FEcb2J33VuRExh0";
 
@@ -13,64 +16,64 @@ async function log(tag, data) {
   } catch (e) { console.log("diag log failed:", e?.message); }
 }
 
-async function jfetch(url, params, tag) {
-  const u = `${url}?${new URLSearchParams(params)}`;
+const SOURCES = [
+  ["los_angeles", "https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", ["AIN","APN"], ["SitusFullAddress","SitusAddress"], null],
+  ["napa", "https://gis.napacounty.gov/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query", ["asmtwithdash","asmt"], ["streetaddr"], null],
+  ["orange", "https://www.ocgis.com/arcpub/rest/services/Map_Layers/Parcels/MapServer/0/query", ["ASSESSMENT_NO"], ["SITE_ADDRESS"], null],
+  ["san_diego", "https://webmaps.sandiego.gov/arcgis/rest/services/GeocoderMerged/MapServer/1/query", ["APN","APN_8"], ["SITUS_STREET"], ["SITUS_ADDRESS"]],
+  ["san_bernardino", "https://services.arcgis.com/aA3snZwJfFkVyDuP/arcgis/rest/services/Parcels_for_San_Bernardino_County/FeatureServer/0/query", ["ParcelNumber"], ["SitusAddress","Address"], null],
+  ["sacramento", "https://services1.arcgis.com/5NARefyPVtAeuJPU/arcgis/rest/services/Parcels/FeatureServer/0/query", ["APN"], ["STREET_NAM"], ["STREET_NBR"]],
+  ["santa_clara", "https://services8.arcgis.com/fpjs8A5Vtkshblnd/arcgis/rest/services/Santa_Clara_County_Parcels/FeatureServer/0/query", ["apn"], ["situs_stre"], ["situs_hous"]],
+  ["alameda", "https://services5.arcgis.com/ROBnTHSNjoZ2Wm1P/arcgis/rest/services/Parcels/FeatureServer/0/query", ["APN"], ["SitusAddress","SitusStreetName"], null],
+  ["contra_costa", "https://gis.cccounty.us/arcgis/rest/services/CCMAP/Assessment_Parcels_ArcPro/MapServer/0/query", ["APN"], ["N_STR_NM"], ["N_STR_NBR"]],
+  ["ventura", "https://maps.ventura.org/arcgis/rest/services/SDs/Parcels/MapServer/0/query", ["APN","APN10"], ["SITUS","SITUS_STRE"], null],
+  ["sonoma", "https://socogis.sonomacounty.ca.gov/map/rest/services/OWTSPublic/Cities_GIS_Parcel_Base/FeatureServer/0/query", ["APN"], ["SitusFormatted1","SitusStreetName"], null],
+];
+
+const ADDRISH = /(situs|addr|street|str_|st_nm|house|hous|nbr|num|site)/i;
+const APNISH = /(apn|ain|parcel|asmt|assess)/i;
+
+async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
+  const meta = queryUrl.replace(/\/query$/, "");
+  const out = { slug, reachable: false };
   try {
-    const r = await fetch(u, { signal: AbortSignal.timeout(15000) });
-    const text = await r.text();
-    let json = null; try { json = JSON.parse(text); } catch {}
-    const out = { url: u.slice(0, 500), http: r.status, ok: r.ok, error: json?.error || null,
-      count: json?.features?.length ?? null, preview: text.slice(0, 800) };
-    await log(tag, out);
-    return json;
+    const r = await fetch(`${meta}?f=json`, { signal: AbortSignal.timeout(20000) });
+    out.http = r.status;
+    const j = JSON.parse(await r.text());
+    if (j && j.error) { out.error = (j.error && j.error.message) || "layer error"; await log("fields", out); return; }
+    out.reachable = true;
+    const fields = (j.fields || []).map(f => f.name);
+    out.fieldCount = fields.length;
+    out.apn_cfg = apnCfg;   out.apn_missing = apnCfg.filter(f => !fields.includes(f));
+    out.addr_cfg = addrCfg; out.addr_missing = addrCfg.filter(f => !fields.includes(f));
+    if (numCfg) { out.num_cfg = numCfg; out.num_missing = numCfg.filter(f => !fields.includes(f)); }
+    out.address_candidates = fields.filter(f => ADDRISH.test(f)).slice(0, 40);
+    out.apn_candidates = fields.filter(f => APNISH.test(f)).slice(0, 20);
   } catch (e) {
-    await log(tag, { url: u.slice(0, 500), thrown: String(e?.message || e) });
-    return null;
+    out.thrown = String((e && e.message) || e);
+  }
+  await log("fields", out);
+
+  if (out.reachable) {
+    try {
+      const p = new URLSearchParams({ where: "1=1", outFields: "*", returnGeometry: "false", resultRecordCount: "1", f: "json" });
+      const r2 = await fetch(`${queryUrl}?${p}`, { signal: AbortSignal.timeout(20000) });
+      const j2 = JSON.parse(await r2.text());
+      const attrs = (j2 && j2.features && j2.features[0] && j2.features[0].attributes) || {};
+      const sample = {};
+      for (const k of Object.keys(attrs)) {
+        if (ADDRISH.test(k) || APNISH.test(k)) sample[k] = String(attrs[k]).slice(0, 60);
+      }
+      await log("sample", { slug, sample });
+    } catch (e) {
+      await log("sample", { slug, thrown: String((e && e.message) || e) });
+    }
   }
 }
 
-const ADDR = "https://gis.napacounty.gov/arcgis/rest/services/Hosted/Addresses_Main_All/FeatureServer/0/query";
-const PARCELS = "https://gis.napacounty.gov/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query";
-
 (async () => {
-  await log("selftest_start", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local", env: process.env.VERCEL_ENV || "local" });
-
-  // A) E911: exact number + street
-  const a = await jfetch(ADDR, {
-    where: "UPPER(streetname) LIKE '%LONGHORN%' AND addressnum='55'",
-    outFields: "addressnum,streetname,fulladdress", returnGeometry: "true", outSR: "4326", f: "json", resultRecordCount: "10",
-  }, "e911_exact");
-
-  // B) E911: street only
-  const b = await jfetch(ADDR, {
-    where: "UPPER(streetname) LIKE '%LONGHORN%'",
-    outFields: "addressnum,streetname,fulladdress", returnGeometry: "true", outSR: "4326", f: "json", resultRecordCount: "25",
-  }, "e911_street");
-
-  // C) E911: fulladdress variant
-  await jfetch(ADDR, {
-    where: "UPPER(fulladdress) LIKE '55 LONGHORN%'",
-    outFields: "addressnum,streetname,fulladdress", returnGeometry: "true", outSR: "4326", f: "json", resultRecordCount: "10",
-  }, "e911_fulladdr");
-
-  // D) If we got a point, parcel under it
-  const pt = a?.features?.[0]?.geometry || b?.features?.[0]?.geometry;
-  if (pt && Number.isFinite(pt.x)) {
-    await jfetch(PARCELS, {
-      geometry: JSON.stringify({ x: pt.x, y: pt.y, spatialReference: { wkid: 4326 } }),
-      geometryType: "esriGeometryPoint", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
-      outFields: "asmt,asmtwithdash,streetaddr,gis_acres", returnGeometry: "false", f: "json",
-    }, "parcel_at_point");
-  } else {
-    await log("parcel_at_point", { skipped: "no E911 point found" });
-  }
-
-  // E) Parcels layer: does streetaddr know LONGHORN at all?
-  await jfetch(PARCELS, {
-    where: "UPPER(streetaddr) LIKE '%LONGHORN%'",
-    outFields: "streetaddr,asmtwithdash", returnGeometry: "false", f: "json", resultRecordCount: "10",
-  }, "parcels_streetaddr_longhorn");
-
-  await log("selftest_end", { done: true });
-  console.log("selftest complete");
+  await log("introspect_start", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local", env: process.env.VERCEL_ENV || "local", n: SOURCES.length });
+  for (const s of SOURCES) { await introspect(s[0], s[1], s[2], s[3], s[4]); }
+  await log("introspect_done", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local" });
+  console.log("field introspection complete");
 })();
