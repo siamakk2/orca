@@ -14,6 +14,50 @@ type Match = {apn:string;address:string;acreage:number;label:string;geometry:Geo
 
 const BC:Record<string,string>={green:"#dcfce7",amber:"#fef3c7",red:"#fee2e2",gray:"#f1f5f9"};
 const BT:Record<string,string>={green:"#166534",amber:"#92400e",red:"#991b1b",gray:"#475569"};
+// Cold-start panel — reuses the landing page's palette (ink/taupe/blue/cream/line) and Georgia display
+// face so launching the app doesn't feel like arriving at a different company.
+const INTRO_CSS=`
+.k2-intro{position:absolute;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;
+  background:linear-gradient(180deg,rgba(250,248,244,.80),rgba(250,248,244,.93));backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.k2-card{width:100%;max-width:660px;background:#fff;border:1px solid #ece6de;border-radius:18px;
+  box-shadow:0 24px 60px rgba(67,57,47,.16);padding:34px 36px;animation:k2in .45s cubic-bezier(.2,.7,.3,1) both}
+@keyframes k2in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.k2-eyebrow{font:700 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#2f74c0}
+.k2-h1{margin:14px 0 0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:clamp(25px,4.2vw,36px);line-height:1.14;letter-spacing:-.01em;color:#43392f}
+.k2-h1 em{font-style:italic;color:#2f74c0}
+.k2-sub{margin:12px 0 0;max-width:52ch;font:400 15px/1.55 system-ui,-apple-system,sans-serif;color:#6f6156}
+.k2-field{display:flex;gap:8px;margin:22px 0 0}
+.k2-input{flex:1;min-width:0;font:400 16px/1 system-ui,-apple-system,sans-serif;color:#43392f;background:#fff;
+  border:1.5px solid #ece6de;border-radius:12px;padding:15px 16px;outline:none;transition:border-color .15s,box-shadow .15s}
+.k2-input::placeholder{color:#a89e94}
+.k2-input:focus{border-color:#2f74c0;box-shadow:0 0 0 4px #eaf3fc}
+.k2-go{flex:none;border:none;border-radius:12px;background:#2f74c0;color:#fff;font:600 15px/1 system-ui,-apple-system,sans-serif;
+  padding:0 24px;cursor:pointer;transition:background .15s,transform .1s}
+.k2-go:hover{background:#255f9f}
+.k2-go:active{transform:translateY(1px)}
+.k2-go:disabled{opacity:.55;cursor:default}
+.k2-try{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:14px 0 0}
+.k2-trylabel{font:600 11px/1 system-ui,-apple-system,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#a89e94;margin-right:2px}
+.k2-chip{border:1px solid #ece6de;background:#faf8f4;border-radius:999px;padding:7px 13px;cursor:pointer;
+  font:500 12.5px/1 system-ui,-apple-system,sans-serif;color:#6f6156;transition:border-color .15s,color .15s,background .15s}
+.k2-chip:hover{border-color:#2f74c0;color:#2f74c0;background:#eaf3fc}
+.k2-gets{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin:24px 0 0;background:#ece6de;border:1px solid #ece6de;border-radius:12px;overflow:hidden}
+.k2-get{background:#fff;padding:13px 15px;display:flex;flex-direction:column;gap:3px}
+.k2-get b{font:600 13px/1.2 system-ui,-apple-system,sans-serif;color:#43392f}
+.k2-get span{font:400 12px/1.4 system-ui,-apple-system,sans-serif;color:#8b8177}
+.k2-foot{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin:20px 0 0;
+  padding-top:16px;border-top:1px solid #f2ede6;font:500 12px/1.4 system-ui,-apple-system,sans-serif;color:#a89e94}
+.k2-skip{border:none;background:none;padding:0;cursor:pointer;font:500 12px/1.4 system-ui,-apple-system,sans-serif;color:#2f74c0}
+.k2-skip:hover{text-decoration:underline}
+.k2-intro :focus-visible{outline:2px solid #2f74c0;outline-offset:2px}
+@media (max-width:560px){
+  .k2-card{padding:26px 20px;border-radius:16px}
+  .k2-field{flex-direction:column}
+  .k2-go{padding:15px 24px}
+  .k2-gets{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){.k2-card{animation:none}}
+`;
 function centroid(g:any){const polys=g.type==="Polygon"?[g.coordinates]:g.coordinates;let x=0,y=0,n=0;polys.forEach((pl:any)=>pl[0].forEach((c:any)=>{x+=c[0];y+=c[1];n++}));return[x/n,y/n]}
 function money(v:any){const n=Number(v);return v==null||Number.isNaN(n)||n===0?null:"$"+n.toLocaleString(undefined,{maximumFractionDigits:0})}
 function pickVal(a:Record<string,any>,names:string[]){for(const nm of names)for(const k in a){if(k.toLowerCase()===nm.toLowerCase()&&a[k]!=null&&String(a[k]).trim()!=="")return a[k]}return null}
@@ -52,6 +96,7 @@ export default function Home(){
   const [znBusy,setZnBusy]=useState(false);
   const [znSources,setZnSources]=useState<string[]>([]);
   const [ready,setReady]=useState(false);
+  const [intro,setIntro]=useState(true);
   const [embed,setEmbed]=useState(false);
   const [brand,setBrand]=useState<string>("");
   useEffect(()=>{try{const sp=new URLSearchParams(window.location.search);setEmbed(sp.get("embed")==="1"||sp.get("embed")==="true");setBrand(sp.get("brand")||"")}catch{}},[]);
@@ -117,7 +162,7 @@ export default function Home(){
   }
 
   async function run(url:string,label:string){
-    setBusy(true);setSel(null);setMatches([]);setReport(null);setMsg(label);
+    setIntro(false);setBusy(true);setSel(null);setMatches([]);setReport(null);setMsg(label);
     try{
       const r=await fetch(url);const d=await r.json();
       if(d.status==="ok"&&d.matches?.length){
@@ -132,6 +177,7 @@ export default function Home(){
   }
   const lookupPoint=(lat:number,lon:number)=>run(`/api/parcel?lat=${lat}&lon=${lon}`,"Fetching parcel…");
   const search=()=>{const q=addr.trim();if(q)run(`/api/parcel?q=${encodeURIComponent(q)}`,"Searching California records…")};
+  const tryExample=(q:string)=>{setAddr(q);run(`/api/parcel?q=${encodeURIComponent(q)}`,"Searching California records…")};
   function jump(c:Slug){setCounty(c);mapRef.current?.flyTo({center:VIEWS[c].c,zoom:VIEWS[c].z})}
 
   async function downloadPDF(){
@@ -254,13 +300,58 @@ export default function Home(){
             : <span style={{color:"#0f172a",fontWeight:800,fontSize:16,letterSpacing:-.3}}>K2&nbsp;<span style={{color:"#2563eb"}}>Investment</span></span>}
           <span style={{fontSize:11,fontWeight:700,color:"#2563eb",background:"#eff6ff",padding:"3px 9px",borderRadius:999,marginLeft:2}}>California</span>
         </a>
+        {!intro && (
         <div style={{display:"flex",gap:8,background:"#fff",borderRadius:12,padding:8,boxShadow:"0 4px 14px rgba(0,0,0,.15)",flex:"1 1 320px",maxWidth:460}}>
           <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")search()}} placeholder="Enter any California address or APN…" style={{flex:1,minWidth:0,border:"none",outline:"none",fontSize:14,padding:"8px 10px",color:"#0f172a"}}/>
-          <button onClick={search} disabled={busy} style={{border:"none",borderRadius:8,background:"#2563eb",color:"#fff",fontWeight:600,fontSize:14,padding:"8px 16px",cursor:"pointer",opacity:busy?.5:1}}>{busy?"…":"Search"}</button>
+          <button onClick={search} disabled={busy} style={{border:"none",borderRadius:8,background:"#2563eb",color:"#fff",fontWeight:600,fontSize:14,padding:"8px 16px",cursor:"pointer",opacity:busy?.5:1}}>{busy?"…":"Analyze"}</button>
         </div>
+        )}
       </div>
 
-      {!sel && matches.length===0 && (
+      {intro && (
+        <div className="k2-intro" role="dialog" aria-label="Start a parcel analysis">
+          <style dangerouslySetInnerHTML={{__html:INTRO_CSS}}/>
+          <div className="k2-card">
+            <div className="k2-eyebrow">Land due-diligence · California</div>
+            <h1 className="k2-h1">Know what you can build<br/><em>before</em> you buy the land.</h1>
+            <p className="k2-sub">Enter any California address or APN. K2 pulls the parcel, reads the zoning, checks live flood and fire maps, and returns an investor-grade report in under two minutes.</p>
+
+            <div className="k2-field">
+              <input
+                className="k2-input" value={addr} autoFocus
+                onChange={e=>setAddr(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter")search()}}
+                placeholder="e.g. 1600 Pacific Hwy, San Diego"
+                aria-label="California address or APN"
+              />
+              <button className="k2-go" onClick={search} disabled={busy}>{busy?"Analyzing…":"Analyze"}</button>
+            </div>
+
+            <div className="k2-try">
+              <span className="k2-trylabel">Or try one</span>
+              {["55 Longhorn Ridge Rd, Napa","1600 Pacific Hwy, San Diego","200 N Spring St, Los Angeles"].map(x=>(
+                <button key={x} className="k2-chip" onClick={()=>tryExample(x)}>{x}</button>
+              ))}
+            </div>
+
+            <div className="k2-gets">
+              {[["Zoning & density","allowed uses, max dwellings, buildable envelope"],
+                ["Deal-killers","FEMA flood, CAL FIRE hazard, Williamson Act, terrain"],
+                ["Value & use","assessed value, land use, development capacity"],
+                ["Investor analysis","a written bottom-line read on the parcel"]].map(([t,d])=>(
+                <div className="k2-get" key={t}><b>{t}</b><span>{d}</span></div>
+              ))}
+            </div>
+
+            <div className="k2-foot">
+              <span>11 California counties live · expanding statewide</span>
+              <button className="k2-skip" onClick={()=>setIntro(false)}>Skip and explore the map →</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!intro && !sel && matches.length===0 && (
         <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",zIndex:10,background:"rgba(255,255,255,.95)",borderRadius:999,padding:"6px 16px",fontSize:12,fontWeight:500,color:"#475569",boxShadow:"0 2px 8px rgba(0,0,0,.12)",maxWidth:"90vw",textAlign:"center"}}>{!ready?"Loading map…":msg}</div>
       )}
 
