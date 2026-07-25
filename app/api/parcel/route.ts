@@ -50,16 +50,20 @@ const COUNTIES: County[] = [
 
 const bySlug = (s:string|null) => COUNTIES.find(c=>c.slug===s) || null;
 const route = (lon:number,lat:number) => COUNTIES.find(c=>{const[w,s,e,n]=c.bbox;return lon>=w&&lon<=e&&lat>=s&&lat<=n})||null;
-const routeAll = (lon:number,lat:number) => COUNTIES.filter(c=>{const[w,s,e,n]=c.bbox;return lon>=w&&lon<=e&&lat>=s&&lat<=n});
+// bboxes overlap along county lines — return every candidate, nearest bbox-centre first
+const routeAll = (lon:number,lat:number) => COUNTIES
+  .filter(c=>{const[w,s,e,n]=c.bbox;return lon>=w&&lon<=e&&lat>=s&&lat<=n})
+  .map(c=>{const[w,s,e,n]=c.bbox;return{c,d:((w+e)/2-lon)**2+((s+n)/2-lat)**2}})
+  .sort((a,b)=>a.d-b.d).map(x=>x.c);
 
 function cw(r:number[][]){let s=0;for(let i=0;i<r.length;i++){const[a,b]=r[i],[c,d]=r[(i+1)%r.length];s+=(c-a)*(d+b)}return s>0}
 function rings2geo(rings:number[][][]){const o=rings.filter(cw),h=rings.filter(r=>!cw(r)),base=o.length?o:rings,p=base.map(x=>[x]);for(const x of h)p[0]?.push(x);return p.length===1?{type:"Polygon",coordinates:p[0]}:{type:"MultiPolygon",coordinates:p}}
 function first(a:Record<string,unknown>,n:string[]){for(const k of n){const v=a?.[k];if(v!=null&&String(v).trim()!=="")return String(v).trim()}return null}
 function acres(g:unknown){return Math.round(area(g as GeoJSON.Geometry)/4046.8564224*1000)/1000}
 
-async function q(src:Src,extra:Record<string,string>){
+async function q(src:Src,extra:Record<string,string>,ms=10000){
   const p=new URLSearchParams({outFields:"*",returnGeometry:"true",outSR:"4326",f:"json",...extra});
-  const r=await fetch(`${src.url}?${p}`,{cache:"no-store"});
+  const r=await fetch(`${src.url}?${p}`,{cache:"no-store",signal:AbortSignal.timeout(ms)});
   if(!r.ok)throw new Error(`HTTP ${r.status}`);
   const d=await r.json();
   if(d.error)throw new Error(d.error?.message||"GIS error");
@@ -78,16 +82,39 @@ function rec(f:any,src:Src,label:string){
 const SUF=new Set(["RD","ROAD","ST","STREET","AVE","AVENUE","BLVD","DR","DRIVE","LN","LANE","WAY","CT","COURT","PL","PLACE","CIR","CIRCLE","TER","HWY","PKWY","TRL","N","S","E","W"]);
 const isApn = (s:string)=>/^[0-9][0-9\- ]{4,}[0-9]$/.test(s.trim());
 function apnWhere(src:Src,s:string){const raw=s.trim().toUpperCase().replace(/'/g,"''"),dig=raw.replace(/[^0-9]/g,""),c:string[]=[];for(const f of src.apn){c.push(`${f}='${raw}'`);if(dig&&dig!==raw)c.push(`${f}='${dig}'`)}return c.join(" OR ")}
+const DIR=new Set(["N","S","E","W","NE","NW","SE","SW","NORTH","SOUTH","EAST","WEST"]);
+const STOP=new Set(["CA","CALIF","CALIFORNIA","USA","US","COUNTY"]);
+// strip LIKE wildcards so a street name can never be read as a pattern
+const clean=(x:string)=>x.replace(/[%_[\]]/g,"");
 function parseAddr(s:string){
   const up=s.trim().toUpperCase().replace(/'/g,"''").replace(/[.,]/g," "),t=up.split(/\s+/).filter(Boolean);
   let num=""; if(t.length && /^\d+[A-Z]?$/.test(t[0])) num=(t.shift() as string).replace(/[A-Z]$/,"");
-  const st=t.filter(x=>!SUF.has(x)&&x!=="CA"&&x!=="CALIFORNIA"&&!/^\d{5}$/.test(x));
+  // skip a leading directional ("N Main St") so the street name doesn't terminate on token 0
+  let i=0; while(i<t.length&&DIR.has(t[i]))i++;
+  // the street name runs up to the first suffix token (RD/ST/AVE…); everything past it is city/state/zip
+  let end=i; while(end<t.length&&!SUF.has(t[end]))end++;
+  const drop=(x:string)=>!STOP.has(x)&&!/^\d{5}$/.test(x);
+  let st=t.slice(i,end).filter(drop);
+  // no suffix in the query at all — fall back to every non-suffix word
+  if(!st.length)st=t.filter(x=>!SUF.has(x)&&drop(x));
   return { num, key:st[0]||"", keys:st };
 }
-// street-name-only WHERE (number is filtered in JS afterward — immune to zero-padding / field-format quirks)
-function streetWhere(src:Src,key:string){
-  if(!key)return null;
-  return src.addr.map(f=>`UPPER(${f}) LIKE '%${key}%'`).join(" OR ");
+// Every word of the street name must appear in the same address field. Matching only the first word
+// ("OLD" in "Old Sonoma Rd") pulls in every unrelated street that happens to contain it.
+function streetWhere(src:Src,keys:string[]){
+  const ks=keys.map(clean).filter(Boolean);
+  if(!ks.length)return null;
+  return src.addr.map(f=>`(${ks.map(k=>`UPPER(${f}) LIKE '%${k}%'`).join(" AND ")})`).join(" OR ");
+}
+// House-number predicate, pushed into the query so a common street name can't bury the right lot
+// past the server's row cap. Zero-padded county fields ("0055") are covered too.
+function numWhere(src:Src,num:string){
+  const n=clean(num); if(!n)return null;
+  const c:string[]=[];
+  for(const f of src.num||[]){ c.push(`${f}='${n}'`); c.push(`${f}='${n.padStart(4,"0")}'`); if(/^\d+$/.test(n))c.push(`${f}=${n}`); }
+  for(const f of src.addr){ c.push(`UPPER(${f}) LIKE '${n} %'`); c.push(`UPPER(${f}) LIKE '${n.padStart(4,"0")} %'`); }
+  const u=[...new Set(c)];
+  return u.length?`(${u.join(" OR ")})`:null;
 }
 function numOf(addr:string){ const m=String(addr).trim().match(/^(\d+)/); return m?parseInt(m[1],10):null; }
 
@@ -212,20 +239,28 @@ export async function GET(req:NextRequest){
       const near = near0;
       const tryC = near.length ? near : COUNTIES;
 
-      // 1) match on street name, then filter to the exact house number in code (immune to number-format quirks)
+      // 1) street-name match, narrowed to the house number where the county exposes one.
+      //    An exact hit anywhere beats an inexact hit everywhere, so every candidate county is
+      //    tried before we fall back to "here are the lots on that road".
       const pa=parseAddr(s);
-      for(const c of tryC){ for(const src of c.sources){ try{
-        const where=streetWhere(src,pa.key); if(!where)continue;
-        const feats=await q(src,{where,resultRecordCount:"50",orderByFields:src.addr[0]});
-        let matches=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean) as any[];
-        if(pa.num){
-          const want=parseInt(pa.num,10);
-          const exact=matches.filter(m=>numOf(m.address)===want);
-          if(exact.length)matches=exact;
-        }
-        matches=matches.slice(0,12);
-        if(matches.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches});
-      }catch{} } }
+      const want=pa.num?parseInt(pa.num,10):null;
+      let loose:{c:County;matches:any[]}|null=null;
+      for(const c of tryC){ for(const src of c.sources){
+        const sw=streetWhere(src,pa.keys); if(!sw)continue;
+        const nw=numWhere(src,pa.num);
+        let feats:any[]=[];
+        if(nw){ try{ feats=await q(src,{where:`(${sw}) AND ${nw}`,resultRecordCount:"25"}); }catch{ feats=[]; } }
+        // broad pass: no row-cap ordering bias, and a cap high enough to reach the right lot
+        if(!feats.length){ try{ feats=await q(src,{where:sw,resultRecordCount:"200"}); }catch{ continue; } }
+        const all=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean) as any[];
+        if(!all.length)continue;
+        const exact=want!=null?all.filter(m=>numOf(m.address)===want):all;
+        if(exact.length)return NextResponse.json({status:"ok",...(want!=null?{match:"exact"}:{}),county:c.slug,label:c.label,matches:exact.slice(0,12)});
+        if(!loose)loose={c,matches:all};
+      } }
+      dlog("rt_step1",{keys:pa.keys,num:pa.num,exact:false,loose:loose?loose.matches.length:0});
+      // the number isn't on that road in any county we cover — show the road's lots, flagged as inexact
+      if(loose)return NextResponse.json({status:"ok",match:"street",county:loose.c.slug,label:loose.c.label,matches:loose.matches.slice(0,12)});
 
       // 2) exact parcel sitting under the geocoded point (catches vacant land the address field misses)
       if(geo){
