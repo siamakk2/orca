@@ -11,7 +11,7 @@ const OV: Record<string, any> = {
     williamson: { url:"https://gis.napacounty.gov/arcgis/rest/services/Hosted/Williamson_Act_Parcels_Public/FeatureServer/0/query", pick:["*"] },
   },
   los_angeles: {
-    zoning: { url:"https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", pick:["ZONING","ZONE","zoning","LABEL","ZONE_CMPLT","ZONE_CLASS"] },
+    zoning: { url:"https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", pick:["ZONING_CODE","ZONING","ZONE","zoning","LABEL","ZONE_CMPLT","ZONE_CLASS","CATEGORY"] },
   },
 };
 /* Statewide fallbacks — only Napa and LA ever had county overlay configs, so every other
