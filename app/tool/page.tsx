@@ -16,6 +16,24 @@ const BC:Record<string,string>={green:"#dcfce7",amber:"#fef3c7",red:"#fee2e2",gr
 const BT:Record<string,string>={green:"#166534",amber:"#92400e",red:"#991b1b",gray:"#475569"};
 // Cold-start panel — reuses the landing page's palette (ink/taupe/blue/cream/line) and Georgia display
 // face so launching the app doesn't feel like arriving at a different company.
+const SHELL_CSS=`
+.k2-report{position:absolute;top:72px;left:12px;z-index:10;width:420px;max-width:94vw;max-height:84vh;
+  overflow-y:auto;background:#fff;border:1px solid #ece6de;border-radius:16px;box-shadow:0 18px 48px rgba(67,57,47,.20)}
+.k2-picker{position:absolute;top:76px;left:12px;z-index:10;width:360px;max-width:92vw;max-height:64vh;
+  overflow-y:auto;background:#fff;border:1px solid #ece6de;border-radius:12px;box-shadow:0 12px 32px rgba(67,57,47,.18)}
+.k2-grab{display:none}
+/* On a phone the map is the context and the report is a sheet over it, not a box beside it. */
+@media (max-width:640px){
+  .k2-report,.k2-picker{top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;border-radius:18px 18px 0 0;
+    border-left:none;border-right:none;border-bottom:none;box-shadow:0 -10px 34px rgba(67,57,47,.22)}
+  .k2-report{max-height:82vh}
+  .k2-picker{max-height:56vh}
+  .k2-report>div:first-of-type{border-radius:0}
+  .k2-grab{display:block;position:sticky;top:0;z-index:3;background:#fff;padding:8px 0 2px;text-align:center}
+  .k2-grab::after{content:"";display:inline-block;width:38px;height:4px;border-radius:999px;background:#e4ddd3}
+  .k2-report,.k2-picker{padding-bottom:env(safe-area-inset-bottom)}
+}
+`;
 const INTRO_CSS=`
 .k2-intro{position:absolute;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;
   background:linear-gradient(180deg,rgba(250,248,244,.80),rgba(250,248,244,.93));backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
@@ -219,70 +237,106 @@ export default function Home(){
       const durl:string=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result as string);r.readAsDataURL(blob)});
       doc.addImage(durl,"PNG",M,6,15,15);
     }catch{}
-    doc.setTextColor(15,23,42);doc.setFont("helvetica","bold");doc.setFontSize(17);doc.text("K2 INVESTMENT",M+19,13.5);
-    doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(37,99,235);doc.text("PARCEL FEASIBILITY REPORT",M+19,19);
-    doc.setTextColor(148,163,184);doc.setFontSize(8);doc.text(new Date().toLocaleDateString(),W-M,13.5,{align:"right"});
-    doc.setDrawColor(226,232,240);doc.setLineWidth(0.4);doc.line(M,25,W-M,25);
+    doc.setTextColor(67,57,47);doc.setFont("times","normal");doc.setFontSize(19);doc.text("K2 Investment",M+19,13.5);
+    doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(47,116,192);doc.text("PROPERTY RECORD",M+19,19);
+    doc.setTextColor(168,158,148);doc.setFontSize(8);doc.text(new Date().toLocaleDateString(),W-M,13.5,{align:"right"});
+    doc.setDrawColor(236,230,222);doc.setLineWidth(0.4);doc.line(M,25,W-M,25);
     y=38;
-    doc.setTextColor(15,23,42);doc.setFont("helvetica","bold");doc.setFontSize(15);
+    doc.setTextColor(67,57,47);doc.setFont("times","normal");doc.setFontSize(17);
     doc.text(sel.address||"Vacant parcel (no address on file)",M,y);
     drawShape(doc,sel.geometry,W-M-46,30,46,34);
-    y+=7;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(100,116,139);
+    y+=7;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(139,129,119);
     doc.text(`APN ${sel.apn}    ${sel.label} County    ${sel.acreage} acres`,M,y);
     if(report){
       y+=8;
-      doc.setFillColor(15,23,42);doc.roundedRect(M,y,44,28,2,2,"F");
-      doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(21);doc.text(String(score),M+22,y+15,{align:"center"});
-      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(148,163,184);doc.text("PROJECT SCORE /100",M+22,y+21,{align:"center"});
+      doc.setFillColor(250,248,244);doc.setDrawColor(236,230,222);doc.roundedRect(M,y,44,28,2,2,"FD");
+      doc.setTextColor(67,57,47);doc.setFont("times","normal");doc.setFontSize(24);doc.text(String(score),M+22,y+15,{align:"center"});
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(168,158,148);doc.text("COMPOSITE READ /100",M+22,y+21,{align:"center"});
       const kx=M+54, kw=(W-M-kx)/3;
       ([["Development",potential.t],["Regulatory risk",regRisk.t],["Market demand",demand.t]] as [string,string][]).forEach((k,i)=>{
         const x=kx+i*kw;
-        doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text(k[0],x,y+9);
-        doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(15,23,42);doc.text(k[1],x,y+20);
+        doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(168,158,148);doc.text(k[0],x,y+9);
+        doc.setFont("helvetica","normal");doc.setFontSize(12);doc.setTextColor(67,57,47);doc.text(k[1],x,y+20);
       });
       y+=34;
     }
     if(analysis){
       y+=10;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;
-      doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text("INVESTOR ANALYSIS"+(aiFlag?"  (AI)":""),M,y);y+=6;
-      doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);
+      doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(168,158,148);doc.text("THE READ"+(aiFlag?"  (AI)":""),M,y);y+=6;
+      doc.setFont("times","normal");doc.setFontSize(11);doc.setTextColor(67,57,47);
       doc.splitTextToSize(analysis.replace(/\*\*/g,""),W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5});
     }
-    const sec=(t:string)=>{if(y>250){doc.addPage();y=20}y+=8;doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=6;doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(37,99,235);doc.text(t,M,y);y+=6.5;doc.setFont("helvetica","normal");doc.setFontSize(10)};
-    const row=(k:string,v:any,c?:number[])=>{if(y>278){doc.addPage();y=20}doc.setTextColor(100,116,139);doc.setFont("helvetica","normal");doc.text(k,M,y);const col=c||[15,23,42];doc.setTextColor(col[0],col[1],col[2]);doc.setFont("helvetica","bold");doc.text(String(v),W-M,y,{align:"right"});y+=6.6};
+    const sec=(t:string)=>{if(y>250){doc.addPage();y=20}y+=8;doc.setDrawColor(236,230,222);doc.line(M,y,W-M,y);y+=6;doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(168,158,148);doc.text(t.toUpperCase(),M,y);y+=6.5;doc.setFont("helvetica","normal");doc.setFontSize(10)};
+    const row=(k:string,v:any,c?:number[])=>{if(y>278){doc.addPage();y=20}doc.setTextColor(139,129,119);doc.setFont("helvetica","normal");doc.setFontSize(10);doc.text(k,M,y);const col=c||[67,57,47];doc.setTextColor(col[0],col[1],col[2]);doc.text(String(v),W-M,y,{align:"right"});y+=6.6};
     const RC:Record<string,number[]>={green:[22,101,52],amber:[146,64,14],red:[153,27,27],gray:[100,116,139]};
-    sec("1.  What You Can Build");
+    sec("Zoning on record");
     row("Zoning district",bb.code||"Not returned");
     if(bb.name)row("District",bb.name); if(bb.use)row("Primary use",bb.use); if(bb.minLot)row("Min lot / density",bb.minLot);
     row("Density allowance on record",bb.maxUnits!=null?bb.maxUnits:"—",[37,99,235]);
     if(bb.envelope)row("Est. buildable footprint",bb.envelope.toLocaleString()+" sf");
-    row("ADU potential","1 ADU + 1 JADU likely (CA state law)");
+    row("ADU allowance","State law generally permits ADUs - confirm locally");
     if(zoning){
       sec("Zoning & Entitlement Intelligence"+(zoning.confidence?`  (${zoning.confidence} confidence)`:""));
       if(zoning.zone)row("Governing zone",zoning.zone);
       if(zoning.jurisdiction)row("Jurisdiction",zoning.jurisdiction);
       if(zoning.summary){doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);doc.splitTextToSize(zoning.summary,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5})}
       if(Array.isArray(zoning.standards))zoning.standards.filter((s:any)=>s&&s.value).forEach((s:any)=>row(s.label,String(s.value)));
-      const para=(lab:string,txt:string)=>{if(!txt)return;if(y>270){doc.addPage();y=20}y+=1.5;doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(124,58,237);doc.text(lab,M,y);y+=5;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);doc.splitTextToSize(txt,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5})};
+      const para=(lab:string,txt:string)=>{if(!txt)return;if(y>270){doc.addPage();y=20}y+=1.5;doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(47,116,192);doc.text(lab,M,y);y+=5;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);doc.splitTextToSize(txt,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5})};
       para("ADUs",zoning.adu);para("Upside",zoning.opportunities);para("Process",zoning.process);
       if(Array.isArray(zoning.flags)&&zoning.flags.length){if(y>268){doc.addPage();y=20}y+=1.5;doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(194,65,12);doc.text("Could stop or delay a deal",M,y);y+=5;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(154,52,18);zoning.flags.forEach((f:string)=>{doc.splitTextToSize("- "+f,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5})})}
       if(znSources&&znSources.length){if(y>274){doc.addPage();y=20}doc.setFont("helvetica","italic");doc.setFontSize(7.5);doc.setTextColor(148,163,184);doc.text("Zoning sources: "+znSources.join(", "),M,y);y+=5}
     }
-    sec("2.  What Could Stop a Deal");
+    sec("Hazards & constraints");
     ([["Flood zone (FEMA)","flood"],["Fire hazard","fire"],["Williamson Act","williamson"],["Terrain","terrain"]] as const).forEach(([lab,k])=>{const r=rr[k as string];row(lab,r?r.text:"—",r?RC[r.level]:undefined)});
-    sec("3.  Is It Worth It");
+    sec("Value & use on record");
     if(uCode)row("Land use (county code)",String(uCode));
-    row("Development capacity",bb.maxUnits!=null?`${bb.maxUnits} dwelling${bb.maxUnits===1?"":"s"} by right`:"—");
-    row("Assessed value",vAssessed||"Not published in public layer");
-    row("Assessed land value",vLand||"Not published in public layer");
+    row("Density on record",bb.maxUnits!=null?`${bb.maxUnits} dwelling${bb.maxUnits===1?"":"s"} at listed density`:"—");
+    row("Assessed value",vAssessed||(exemptish(sel.attrs)?"Tax-exempt parcel - not assessed":"Not published by this county"));
+    row("Assessed land value",vLand||(exemptish(sel.attrs)?"Tax-exempt parcel - not assessed":"Not published by this county"));
+    {
+      const yr=pickVal(sel.attrs,["YearBuilt1","YearBuilt","EffectiveYear1","yearbuilt"]);
+      const sq=pickVal(sel.attrs,["SQFTmain1","SQFTmain","BuildingArea","sqft","LivingArea"]);
+      const bd=pickVal(sel.attrs,["Bedrooms1","Bedrooms","BEDROOMS","NBR_BEDROOMS"]);
+      const ba=pickVal(sel.attrs,["Bathrooms1","Bathrooms","BATHROOMS"]);
+      const un=pickVal(sel.attrs,["Units1","Units","NBR_UNITS"]);
+      const ud=pickVal(sel.attrs,["UseDescription","UseType","AssessDescription","usedesc"]);
+      const imp=money(pickVal(sel.attrs,["Roll_ImpValue","ImpValue","improvval","ImprovementValue"]));
+      if(yr||sq||bd||ba||un||ud||imp){
+        sec("Structure & assessor record");
+        if(ud)row("Use on record",String(ud));
+        if(yr)row("Year built",String(yr));
+        if(sq)row("Building area",Number(sq).toLocaleString()+" sf");
+        if(bd||ba)row("Bedrooms / bathrooms",`${bd??"—"} / ${ba??"—"}`);
+        if(un)row("Units on record",String(un));
+        if(imp)row("Improvement value",imp);
+      }
+    }
+    if(ctx && (ctx.communityPlan||ctx.tract||ctx.demographics||ctx.schools||ctx.hospitals)){
+      sec("Neighborhood");
+      if(ctx.communityPlan)row("Community plan area",String(ctx.communityPlan));
+      if(ctx.tract)row("Census tract",String(ctx.tract));
+      if(Array.isArray(ctx.demographics))ctx.demographics.forEach((d:any)=>row(d.label,d.value));
+      (["schools","colleges","hospitals"] as const).forEach(k=>{
+        const list=ctx[k]; if(!Array.isArray(list)||!list.length)return;
+        const title=k==="schools"?"Nearest public schools":k==="colleges"?"Colleges nearby":"Nearest hospitals";
+        if(y>262){doc.addPage();y=20}
+        y+=1.5;doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(168,158,148);doc.text(title.toUpperCase(),M,y);y+=5.5;
+        list.forEach((x:any)=>row(x.name+(x.sub?` · ${x.sub}`:""),x.distance));
+      });
+      if(Array.isArray(ctx.sources)&&ctx.sources.length){
+        if(y>274){doc.addPage();y=20}
+        doc.setFont("helvetica","italic");doc.setFontSize(7.5);doc.setTextColor(168,158,148);
+        doc.text("Sources: "+ctx.sources.join(", "),M,y);y+=5;
+      }
+    }
     if(analysis && activity){
-      sec("4.  What's Happening Nearby");
-      doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(30,41,59);
+      sec("Area activity");
+      doc.setFont("times","normal");doc.setFontSize(10.5);doc.setTextColor(67,57,47);
       doc.splitTextToSize(activity,W-2*M).forEach((ln:string)=>{if(y>276){doc.addPage();y=20}doc.text(ln,M,y);y+=5});
     }
     if(y>270){doc.addPage();y=20}else{y+=6}
     doc.setDrawColor(226,232,240);doc.line(M,y,W-M,y);y+=5;
-    doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(148,163,184);
+    doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(168,158,148);
     doc.text(doc.splitTextToSize("DISCLAIMER: This report is for informational purposes only and is not legal, financial, investment, tax, or land-use advice, an appraisal, or a recommendation to transact. Data comes from public county, state, and federal sources and may be incomplete or outdated; portions are AI-generated and may contain errors. Verify all zoning, overlays, hazards, and development standards with the applicable planning department before any decision. K2 Investment makes no warranty of accuracy and accepts no liability for reliance on this report. Consult licensed professionals before purchasing or developing land.",W-2*M),M,y);
     doc.save(`Orca-Feasibility-${sel.apn.replace(/[^\w]/g,"")}.pdf`);
   }
@@ -315,6 +369,7 @@ export default function Home(){
 
   return (
     <div style={{position:"relative",height:"100vh",width:"100vw",overflow:"hidden",fontFamily:"system-ui,-apple-system,sans-serif"}}>
+      <style dangerouslySetInnerHTML={{__html:SHELL_CSS}}/>
       <div ref={boxRef} style={{position:"absolute",inset:0,background:"#eef2f5"}}/>
       <div style={{position:"absolute",top:0,left:0,right:0,zIndex:10,display:"flex",flexWrap:"wrap",gap:8,padding:12,alignItems:"flex-start",justifyContent:"space-between"}}>
         <a href={embed?"https://parcels.k2investments.com":"/"} target={embed?"_blank":undefined} rel={embed?"noopener":undefined} style={{textDecoration:"none",display:"flex",alignItems:"center",gap:10,background:"#fff",borderRadius:12,padding:"7px 14px",boxShadow:"0 4px 14px rgba(0,0,0,.15)"}}>
@@ -380,7 +435,8 @@ export default function Home(){
       )}
 
       {matches.length>0 && (
-        <div style={{position:"absolute",top:76,left:12,zIndex:10,width:360,maxWidth:"92vw",maxHeight:"64vh",overflowY:"auto",background:"#fff",borderRadius:12,boxShadow:"0 8px 24px rgba(0,0,0,.18)"}}>
+        <div className="k2-picker">
+          <div className="k2-grab" aria-hidden="true"/>
           <div style={{padding:"12px 16px",fontSize:12,fontWeight:700,color:"#334155",borderBottom:"1px solid #f1f5f9"}}>{msg}</div>
           {matches.map((m,i)=>(
             <button key={i} onClick={()=>choose(m)} style={{display:"block",width:"100%",textAlign:"left",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",padding:"11px 16px",cursor:"pointer"}}>
@@ -392,7 +448,8 @@ export default function Home(){
       )}
 
       {sel && (
-        <div style={{position:"absolute",top:72,left:12,zIndex:10,width:420,maxWidth:"94vw",maxHeight:"84vh",overflowY:"auto",background:"#fff",border:"1px solid #ece6de",borderRadius:16,boxShadow:"0 18px 48px rgba(67,57,47,.20)"}}>
+        <div className="k2-report">
+          <div className="k2-grab" aria-hidden="true"/>
           <div style={{position:"sticky",top:0,zIndex:2,background:"#fff",padding:"16px 20px 14px",borderBottom:"1px solid #ece6de",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,borderRadius:"16px 16px 0 0"}}>
             <div style={{minWidth:0}}>
               <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".13em",textTransform:"uppercase",color:"#2f74c0"}}>{sel.label} County · property record</div>
