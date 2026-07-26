@@ -113,6 +113,8 @@ export default function Home(){
   const [znSources,setZnSources]=useState<string[]>([]);
   const [ready,setReady]=useState(false);
   const [intro,setIntro]=useState(true);
+  const [ctx,setCtx]=useState<any>(null);
+  const [ctxBusy,setCtxBusy]=useState(false);
   const [embed,setEmbed]=useState(false);
   const [brand,setBrand]=useState<string>("");
   useEffect(()=>{try{const sp=new URLSearchParams(window.location.search);setEmbed(sp.get("embed")==="1"||sp.get("embed")==="true");setBrand(sp.get("brand")||"")}catch{}},[]);
@@ -144,6 +146,12 @@ export default function Home(){
     if(!b.isEmpty())m.fitBounds(b,{padding:60,maxZoom:17});
   }
   async function choose(mt:Match){
+    try{
+      const c=centroid(mt.geometry);
+      setCtx(null);setCtxBusy(true);
+      fetch(`/api/context?lat=${c[1]}&lon=${c[0]}`).then(r=>r.json())
+        .then(d=>setCtx(d)).catch(()=>setCtx(null)).finally(()=>setCtxBusy(false));
+    }catch{ setCtxBusy(false); }
     setSel(mt);setMatches([]);draw(mt.geometry);setMsg(`${mt.label} County · ${mt.address||mt.apn}`);
     setReport(null);setRepBusy(true);setAnalysis(null);
     const [lon,lat]=centroid(mt.geometry as any);
@@ -516,6 +524,21 @@ export default function Home(){
               : actBusy && !activity ? <div style={{fontSize:13,color:"#64748b"}}>Scanning the area for major developments…</div>
               : activity ? <><div style={{fontSize:13,lineHeight:1.6,color:"#1e293b",whiteSpace:"pre-wrap"}}>{activity}</div>{actSources.length>0 && <div style={{fontSize:11,color:"#94a3b8",marginTop:8}}>Sources: {actSources.join(" · ")}</div>}</>
               : <div style={{fontSize:12,color:"#94a3b8"}}>No notable nearby development activity found.</div>}
+
+            {H("Neighborhood")}
+            {ctxBusy && !ctx ? <div style={{fontSize:12.5,color:"#a89e94",padding:"8px 0"}}>Pulling census and city records…</div>
+              : ctx ? (<>
+                  {ctx.communityPlan && kv("Community plan area", ctx.communityPlan)}
+                  {ctx.tract && kv("Census tract", ctx.tract)}
+                  {Array.isArray(ctx.demographics) && ctx.demographics.map((d:any,i:number)=>(
+                    <div key={i}>{kv(d.label, d.value)}</div>
+                  ))}
+                  {ctx.acsNeedsKey && <div style={{fontSize:12,color:"#a89e94",lineHeight:1.5,padding:"8px 0"}}>
+                    Income, home value, rent and ownership for this tract need a free Census API key — set <b style={{color:"#6f6156"}}>CENSUS_API_KEY</b> in the project environment to switch this on.
+                  </div>}
+                  {ctx.sources?.length>0 && <div style={{fontSize:11,color:"#a89e94",marginTop:6}}>Sources: {ctx.sources.join(" · ")}</div>}
+                </>)
+              : <div style={{fontSize:12.5,color:"#a89e94",padding:"8px 0"}}>Neighborhood data unavailable for this location.</div>}
 
             <div style={{marginTop:16,padding:"12px 14px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,fontSize:10.5,color:"#94a3b8",lineHeight:1.55}}>
               <b style={{color:"#64748b"}}>Disclaimer.</b> This report is provided for informational purposes only and does not constitute legal, financial, investment, tax, or land-use advice, an appraisal, or a recommendation to buy or sell any property. Data is drawn from public county, state, and federal sources that may be incomplete, outdated, or contain errors, and portions of the analysis are AI-generated and may be inaccurate. Zoning, overlays, hazard designations, and development standards change and must be independently verified with the applicable city or county planning department before any decision. K2 Investment and its affiliates make no warranty of accuracy or completeness and accept no liability for actions taken in reliance on this report. Consult licensed professionals (attorney, engineer, surveyor, broker) before purchasing or developing land.
