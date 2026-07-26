@@ -80,6 +80,67 @@ async function communityPlan(lat: number, lon: number) {
   return null;
 }
 
+// Nearest points of interest from the California state GIS server — the same host that serves
+// the statewide CAL FIRE layer. Field names differ per layer, so names/addresses are picked
+// tolerantly rather than hardcoded.
+type Poi = { url: string; name: string[]; extra: string[]; radius: number; take: number };
+const POI: Record<string, Poi> = {
+  schools: {
+    url: "https://services.gis.ca.gov/arcgis/rest/services/Society/California_Schools/MapServer/0/query",
+    name: ["School", "SCHOOL", "SchoolName", "NAME", "Name"], extra: ["City", "CITY", "EdOpsName", "Street"], radius: 3200, take: 4,
+  },
+  colleges: {
+    url: "https://services.gis.ca.gov/arcgis/rest/services/Society/Colleges_Universities/MapServer/0/query",
+    name: ["NAME", "Name", "INSTNM", "College"], extra: ["CITY", "City"], radius: 8000, take: 2,
+  },
+  hospitals: {
+    url: "https://services.gis.ca.gov/arcgis/rest/services/Health/Hospitals/MapServer/0/query",
+    name: ["FACNAME", "FACILITY_NAME", "NAME", "Name", "FAC_NAME"], extra: ["CITY", "City", "TYPE", "FAC_TYPE"], radius: 12000, take: 3,
+  },
+};
+
+const pickName = (a: any, keys: string[]) => {
+  for (const k of keys) if (a?.[k] && String(a[k]).trim()) return String(a[k]).trim();
+  // fall back to the first string field that looks like a name
+  for (const k of Object.keys(a || {})) {
+    if (/name|facname|school|instnm/i.test(k) && a[k] && String(a[k]).trim()) return String(a[k]).trim();
+  }
+  return null;
+};
+
+function miles(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 3958.8, tr = Math.PI / 180;
+  const dLat = (lat2 - lat1) * tr, dLon = (lon2 - lon1) * tr;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * tr) * Math.cos(lat2 * tr) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function nearby(kind: keyof typeof POI, lat: number, lon: number) {
+  const cfg = POI[kind];
+  const p = new URLSearchParams({
+    geometry: JSON.stringify({ x: lon, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: "esriGeometryPoint", inSR: "4326", outSR: "4326",
+    distance: String(cfg.radius), units: "esriSRUnit_Meter",
+    spatialRel: "esriSpatialRelIntersects", outFields: "*", returnGeometry: "true",
+    resultRecordCount: "50", f: "json",
+  });
+  const r = await fetch(`${cfg.url}?${p}`, { cache: "no-store", signal: AbortSignal.timeout(14000) });
+  if (!r.ok) throw new Error(kind + " " + r.status);
+  const d = await r.json();
+  if (d?.error) throw new Error(d.error?.message || kind);
+  const out = (d.features || []).map((f: any) => {
+    const nm = pickName(f.attributes, cfg.name);
+    if (!nm || !f.geometry || !Number.isFinite(f.geometry.x)) return null;
+    let sub: string | null = null;
+    for (const k of cfg.extra) if (f.attributes?.[k] && String(f.attributes[k]).trim()) { sub = String(f.attributes[k]).trim(); break; }
+    return { name: nm, sub, mi: miles(lat, lon, f.geometry.y, f.geometry.x) };
+  }).filter(Boolean) as { name: string; sub: string | null; mi: number }[];
+  const seen = new Set<string>();
+  return out.filter(x => { const k = x.name.toUpperCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => a.mi - b.mi).slice(0, cfg.take)
+    .map(x => ({ name: x.name, sub: x.sub, distance: x.mi < 0.1 ? "on site" : x.mi.toFixed(1) + " mi" }));
+}
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const lat = parseFloat(sp.get("lat") || ""), lon = parseFloat(sp.get("lon") || "");
@@ -103,6 +164,15 @@ export async function GET(req: NextRequest) {
     const cp = await communityPlan(lat, lon);
     if (cp) { out.communityPlan = cp; out.sources.push("City of LA Planning"); }
   } catch { /* not in the City of LA, or layer down */ }
+
+  // Points of interest run in parallel; each failure is isolated to its own kind.
+  const kinds = ["schools", "colleges", "hospitals"] as const;
+  const results = await Promise.allSettled(kinds.map(k => nearby(k, lat, lon)));
+  let anyPoi = false;
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled" && r.value.length) { out[kinds[i]] = r.value; anyPoi = true; }
+  });
+  if (anyPoi) out.sources.push("CA State Geoportal");
 
   return NextResponse.json(out);
 }

@@ -536,7 +536,20 @@ export default function Home(){
                   {ctx.acsNeedsKey && <div style={{fontSize:12,color:"#a89e94",lineHeight:1.5,padding:"8px 0"}}>
                     Income, home value, rent and ownership for this tract need a free Census API key — set <b style={{color:"#6f6156"}}>CENSUS_API_KEY</b> in the project environment to switch this on.
                   </div>}
-                  {ctx.sources?.length>0 && <div style={{fontSize:11,color:"#a89e94",marginTop:6}}>Sources: {ctx.sources.join(" · ")}</div>}
+                  {(["schools","colleges","hospitals"] as const).map(k=>{
+                    const list=ctx[k]; if(!Array.isArray(list)||!list.length) return null;
+                    const title=k==="schools"?"Nearest public schools":k==="colleges"?"Colleges nearby":"Nearest hospitals";
+                    return (<div key={k} style={{marginTop:12}}>
+                      <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"#a89e94",marginBottom:6}}>{title}</div>
+                      {list.map((x:any,i:number)=>(
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"7px 0",borderBottom:"1px solid #f3efe9"}}>
+                          <span style={{fontSize:13,color:"#43392f",minWidth:0}}>{x.name}{x.sub && <span style={{color:"#a89e94"}}> · {x.sub}</span>}</span>
+                          <span style={{fontSize:12.5,color:"#8b8177",whiteSpace:"nowrap"}}>{x.distance}</span>
+                        </div>
+                      ))}
+                    </div>);
+                  })}
+                  {ctx.sources?.length>0 && <div style={{fontSize:11,color:"#a89e94",marginTop:10}}>Sources: {ctx.sources.join(" · ")}</div>}
                 </>)
               : <div style={{fontSize:12.5,color:"#a89e94",padding:"8px 0"}}>Neighborhood data unavailable for this location.</div>}
 
