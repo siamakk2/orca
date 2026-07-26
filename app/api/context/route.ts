@@ -94,8 +94,8 @@ const POI: Record<string, Poi> = {
     name: ["NAME", "Name", "INSTNM", "College"], extra: ["LCITY", "CITY", "City", "INST_TYPE"], radius: 8000, take: 2,
   },
   hospitals: {
-    url: "https://gis.cdph.ca.gov/gisadmin/rest/services/BaseMap/HealthcareFacilitiesELMS/MapServer/0/query",
-    name: ["FACNAME", "FACILITY_NAME", "NAME", "Name", "FAC_NAME", "FACILITY"], extra: ["CITY", "City", "FAC_TYPE", "TYPE", "FACTYPE"], radius: 12000, take: 3,
+    url: "https://services5.arcgis.com/fMBfBrOnc6OOzh7V/arcgis/rest/services/facilitylist/FeatureServer/0/query",
+    name: ["FACNAME", "FACILITY_NAME", "FAC_NAME", "NAME", "Name", "FACILITY"], extra: ["CITY", "City", "LICENSE_TYPE_DESC", "FAC_TYPE", "TYPE", "FACTYPE"], radius: 12000, take: 3,
   },
 };
 
