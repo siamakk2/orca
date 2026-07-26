@@ -135,6 +135,25 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
     } catch (e) { await log("url_probe", { slug, thrown: String((e && e.message) || e) }); }
   }
 
+  // End-to-end ACS check: geocode a known point to a tract, then pull the real variables.
+  // The key itself is never logged — only whether the chain returns data.
+  try {
+    const g = await fetch("https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=-118.242993&y=34.053571&benchmark=Public_AR_Current&vintage=Current_Current&format=json", { signal: AbortSignal.timeout(20000) });
+    const gj = await g.json();
+    const t = gj?.result?.geographies?.["Census Tracts"]?.[0];
+    if (!t) { await log("acs_check", { step: "geocode", ok: false }); }
+    else {
+      const key = process.env.CENSUS_API_KEY;
+      const u = "https://api.census.gov/data/2023/acs/acs5?" + new URLSearchParams({
+        get: "NAME,B19013_001E,B25077_001E,B25064_001E,B01003_001E",
+        for: `tract:${t.TRACT}`, in: `state:${t.STATE} county:${t.COUNTY}`, ...(key ? { key } : {}),
+      });
+      const r = await fetch(u, { signal: AbortSignal.timeout(20000) });
+      const text = await r.text();
+      await log("acs_check", { step: "acs", hasKey: !!key, http: r.status, tract: t.TRACT, county: t.COUNTY, head: text.slice(0, 300) });
+    }
+  } catch (e) { await log("acs_check", { thrown: String((e && e.message) || e) }); }
+
   await log("introspect_done", { commit: process.env.VERCEL_GIT_COMMIT_SHA || "local" });
   console.log("field introspection complete");
 })();
