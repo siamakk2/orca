@@ -135,7 +135,7 @@ async function introspect(slug, queryUrl, apnCfg, addrCfg, numCfg) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
       const text = await r.text();
-      await log("url_probe", { slug, http: r.status, ok: r.ok, head: text.slice(0, 600) });
+      await log("url_probe", { slug, http: r.status, ok: r.ok, head: String(slug).startsWith("zn_") ? text.slice(0, 2000) : text.slice(0, 600) });
     } catch (e) { await log("url_probe", { slug, thrown: String((e && e.message) || e) }); }
   }
 

@@ -14,7 +14,11 @@ const OV: Record<string, any> = {
     // ZIMAS is the City of LA's own zoning layer and covers the city including downtown; the
     // previously configured layer returns nothing there. Chained so other jurisdictions still resolve.
     zoningChain: [
-      { url:"https://zimas.lacity.org/arcgis/rest/services/D_BASEMAPS/MapServer/11/query", pick:["ZONE_CMPLT","ZONE_CLASS","ZONELEGEND","ZONE_CODE"] },
+      // ZIMAS publishes the city zoning polygons inside the "schools" map service (layers 1902 and
+      // 1901), which is why no service actually named "zoning" ever resolved.
+      { url:"https://zimas.lacity.org/arcgis/rest/services/zma/schools/MapServer/1902/query", pick:["ZONE_CMPLT","ZONE_CLASS","ZONELEGEND","ZONE_CODE"] },
+      { url:"https://zimas.lacity.org/arcgis/rest/services/zma/schools/MapServer/1901/query", pick:["ZONE_CMPLT","ZONE_CLASS","ZONELEGEND","ZONE_CODE"] },
+      { url:"https://zimas.lacity.org/arcgis/rest/services/zma/zimas/MapServer/1902/query", pick:["ZONE_CMPLT","ZONE_CLASS","ZONELEGEND","ZONE_CODE"] },
       { url:"https://services2.arcgis.com/Q6Lq3evZUGfPrN7o/arcgis/rest/services/Planning%20and%20Development/FeatureServer/12/query", pick:["ZONING_CODE","ZONING","ZONE","zoning","LABEL","ZONE_CMPLT","ZONE_CLASS","CATEGORY"] },
     ],
   },
