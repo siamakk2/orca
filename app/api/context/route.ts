@@ -95,7 +95,7 @@ const POI: Record<string, Poi> = {
   },
   hospitals: {
     url: "https://services5.arcgis.com/fMBfBrOnc6OOzh7V/arcgis/rest/services/facilitylist/FeatureServer/0/query",
-    name: ["FACNAME", "FACILITY_NAME", "FAC_NAME", "NAME", "Name", "FACILITY"], extra: ["CITY", "City", "LICENSE_TYPE_DESC", "FAC_TYPE", "TYPE", "FACTYPE"], radius: 12000, take: 3,
+    name: ["FacilityName", "FACNAME", "FACILITY_NAME", "FAC_NAME", "NAME", "Name"], extra: ["FacilityType", "LicenseType", "City", "CITY", "FAC_TYPE"], radius: 12000, take: 3,
   },
 };
 
@@ -131,6 +131,8 @@ async function nearby(kind: keyof typeof POI, lat: number, lon: number) {
   const out = (d.features || []).map((f: any) => {
     const nm = pickName(f.attributes, cfg.name);
     if (!nm || !f.geometry || !Number.isFinite(f.geometry.x)) return null;
+    const st = String(f.attributes?.FacilityStatus ?? f.attributes?.StatusType ?? "").toLowerCase();
+    if (st && /closed|pending|inactive/.test(st)) return null;
     let sub: string | null = null;
     for (const k of cfg.extra) if (f.attributes?.[k] && String(f.attributes[k]).trim()) { sub = String(f.attributes[k]).trim(); break; }
     return { name: nm, sub, mi: miles(lat, lon, f.geometry.y, f.geometry.x) };
