@@ -91,11 +91,11 @@ const POI: Record<string, Poi> = {
   },
   colleges: {
     url: "https://services.gis.ca.gov/arcgis/rest/services/Society/Colleges_Universities/MapServer/0/query",
-    name: ["NAME", "Name", "INSTNM", "College"], extra: ["CITY", "City"], radius: 8000, take: 2,
+    name: ["NAME", "Name", "INSTNM", "College"], extra: ["LCITY", "CITY", "City", "INST_TYPE"], radius: 8000, take: 2,
   },
   hospitals: {
-    url: "https://services.gis.ca.gov/arcgis/rest/services/Health/Hospitals/MapServer/0/query",
-    name: ["FACNAME", "FACILITY_NAME", "NAME", "Name", "FAC_NAME"], extra: ["CITY", "City", "TYPE", "FAC_TYPE"], radius: 12000, take: 3,
+    url: "https://gis.cdph.ca.gov/gisadmin/rest/services/BaseMap/HealthcareFacilitiesELMS/MapServer/0/query",
+    name: ["FACNAME", "FACILITY_NAME", "NAME", "Name", "FAC_NAME", "FACILITY"], extra: ["CITY", "City", "FAC_TYPE", "TYPE", "FACTYPE"], radius: 12000, take: 3,
   },
 };
 
