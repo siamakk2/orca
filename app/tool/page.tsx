@@ -372,13 +372,15 @@ export default function Home(){
       <style dangerouslySetInnerHTML={{__html:SHELL_CSS}}/>
       <div ref={boxRef} style={{position:"absolute",inset:0,background:"#eef2f5"}}/>
       <div style={{position:"absolute",top:0,left:0,right:0,zIndex:10,display:"flex",flexWrap:"wrap",gap:8,padding:12,alignItems:"flex-start",justifyContent:"space-between"}}>
-        <a href={embed?"https://parcels.k2investments.com":"/"} target={embed?"_blank":undefined} rel={embed?"noopener":undefined} style={{textDecoration:"none",display:"flex",alignItems:"center",gap:10,background:"#fff",borderRadius:12,padding:"7px 14px",boxShadow:"0 4px 14px rgba(0,0,0,.15)"}}>
+        {!embed && (
+        <a href="/" style={{textDecoration:"none",display:"flex",alignItems:"center",gap:10,background:"#fff",borderRadius:12,padding:"7px 14px",boxShadow:"0 4px 14px rgba(0,0,0,.15)"}}>
           <img src="/k2-logo.png" alt="K2" style={{height:30,width:30,objectFit:"contain"}}/>
           {brand
             ? <span style={{color:"#0f172a",fontWeight:800,fontSize:15,letterSpacing:-.3,lineHeight:1.05}}>{brand}<br/><span style={{fontSize:9,fontWeight:600,color:"#64748b"}}>powered by K2 Investment</span></span>
             : <span style={{color:"#0f172a",fontWeight:800,fontSize:16,letterSpacing:-.3}}>K2&nbsp;<span style={{color:"#2563eb"}}>Investment</span></span>}
           <span style={{fontSize:11,fontWeight:700,color:"#2563eb",background:"#eff6ff",padding:"3px 9px",borderRadius:999,marginLeft:2}}>California</span>
         </a>
+        )}
         {!intro && (
         <div style={{display:"flex",gap:8,background:"#fff",borderRadius:12,padding:8,boxShadow:"0 4px 14px rgba(0,0,0,.15)",flex:"1 1 320px",maxWidth:460}}>
           <input value={addr} onChange={e=>setAddr(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")search()}} placeholder="Enter any California address or APN…" style={{flex:1,minWidth:0,border:"none",outline:"none",fontSize:14,padding:"8px 10px",color:"#0f172a"}}/>
