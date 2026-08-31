@@ -26,7 +26,7 @@ export default function Landing() {
           <div>
             <div className="eyebrow">LAND DUE-DILIGENCE · AUTOMATED · STATEWIDE CALIFORNIA</div>
             <h1>Know everything on record<br/><em>before</em> you buy the land.</h1>
-            <p className="lead">Type an address anywhere in California. In under two minutes K2 pulls the parcel record, cross-references live flood and fire maps, reads the zoning on file, and hands you one report — every public fact about the property, in front of you before you commit.</p>
+            <p className="lead">Type an address anywhere in California. In under two minutes K2 pulls the parcel record, cross-references live flood and fire maps, and reads the <em>current adopted zoning code</em> — with code citations, California state-law overrides, and a verified date — in one report, before you commit.</p>
             <div className="cta-row">
               <Link className="btn btn-lg" href="/tool">Analyze a property →</Link>
               <a className="btn btn-ghost btn-lg" href="#how">See how it works</a>
@@ -38,6 +38,8 @@ export default function Landing() {
               <span className="hc-dot" /> <b>20 Longhorn Ridge Rd</b> · Napa
             </div>
             <div className="hc-row"><span>Zoning</span><b>AW — Agricultural Watershed</b></div>
+            <div className="hc-row"><span>Governing code</span><b className="ok">Napa Co. Title 18 · verified ✓</b></div>
+            <div className="hc-row"><span>State law</span><b>ADU applies · SB 9 N/A</b></div>
             <div className="hc-row"><span>Density on record</span><b className="accent">1 dwelling + ADU</b></div>
             <div className="hc-row"><span>Flood (FEMA)</span><b className="ok">Zone X · minimal</b></div>
             <div className="hc-row"><span>Fire hazard</span><b className="warn">Very High</b></div>
@@ -65,7 +67,7 @@ export default function Landing() {
             <div className="card">
               <div className="cn">01</div>
               <h3>What the record shows</h3>
-              <p>The parcel's zoning district and allowed uses, minimum lot size and density, the maximum dwellings by right, ADU potential, and the buildable envelope — pulled live and read against the county code.</p>
+              <p>The parcel's zoning district and allowed uses, minimum lot size and density, the maximum dwellings by right, ADU potential, and the buildable envelope — read against the <b>current governing code</b>, with clickable citations and the state-law overrides (ADU, SB 9, density bonus) that can change the answer.</p>
             </div>
             <div className="card">
               <div className="cn">02</div>
