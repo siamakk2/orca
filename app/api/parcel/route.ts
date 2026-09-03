@@ -133,10 +133,15 @@ const ADDR_POINTS: AddrPts[] = [
   { county:"napa", url:"https://gis.napacounty.gov/arcgis/rest/services/Hosted/Addresses_Main_All/FeatureServer/0/query", num:"addressnum", street:"streetname", full:"fulladdress" },
 ];
 // Look up the exact address point in a county's E911 layer. Returns [{lon,lat,label}] sorted best-first.
-async function countyLocate(ap:AddrPts, num:string, key:string){
-  if(!key) return [];
+async function countyLocate(ap:AddrPts, num:string, keys:string[]){
+  // Every word of the street name must match. Searching only the first word ("MOUNTAIN" for
+  // "Mountain Home Ranch Rd") returns every Howell/Spring/Diamond Mountain address and the
+  // real road falls past the row cap. Same rule streetWhere already applies at step 1.
+  const ks=keys.map(clean).filter(Boolean);
+  if(!ks.length) return [];
+  const sw=ks.map(k=>`UPPER(${ap.street}) LIKE '%${k}%'`).join(" AND ");
   const p=new URLSearchParams({
-    where:`UPPER(${ap.street}) LIKE '%${key}%'`+(num?` AND ${ap.num}='${num}'`:""),
+    where:sw+(num?` AND ${ap.num}='${num}'`:""),
     outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25"
   });
   const r=await fetch(`${ap.url}?${p}`,{cache:"no-store",signal:AbortSignal.timeout(12000)});
@@ -145,7 +150,7 @@ async function countyLocate(ap:AddrPts, num:string, key:string){
   let feats=(d.features||[]).filter((f:any)=>f?.geometry&&Number.isFinite(f.geometry.x));
   // exact number missed? fall back to the whole street so the user picks their lot
   if(!feats.length && num){
-    const p2=new URLSearchParams({ where:`UPPER(${ap.street}) LIKE '%${key}%'`, outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25" });
+    const p2=new URLSearchParams({ where:sw, outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25" });
     const r2=await fetch(`${ap.url}?${p2}`,{cache:"no-store",signal:AbortSignal.timeout(12000)});
     if(r2.ok){ const d2=await r2.json(); if(!d2.error) feats=(d2.features||[]).filter((f:any)=>f?.geometry&&Number.isFinite(f.geometry.x)); }
   }
@@ -223,8 +228,8 @@ export async function GET(req:NextRequest){
       for(const ap of ADDR_POINTS){ try{
         const plausible = near0.some(c=>c.slug===ap.county) || (!geo && qUP.includes(ap.county.toUpperCase()));
         if(!plausible) continue;
-        const pts=await countyLocate(ap, pa0.num, pa0.key);
-        dlog("rt_step0",{county:ap.county,key:pa0.key,num:pa0.num,pts:pts.length,first:pts[0]?.label||null});
+        const pts=await countyLocate(ap, pa0.num, pa0.keys);
+        dlog("rt_step0",{county:ap.county,key:pa0.keys.join(" "),num:pa0.num,pts:pts.length,first:pts[0]?.label||null});
         if(pts.length){
           const c=bySlug(ap.county)!;
           const exact=pts.filter((p:any)=>p.num===pa0.num);
