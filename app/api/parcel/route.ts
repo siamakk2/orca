@@ -221,6 +221,7 @@ export async function GET(req:NextRequest){
       dlog("rt_search",{q:s,parsed:pa0,commit:process.env.VERCEL_GIT_COMMIT_SHA||"?"});
       geo=await geocode(/CA\b|California|County/i.test(s)?s:`${s}, CA`);
       const near0 = geo ? routeAll(geo.lon,geo.lat) : [];
+      dlog("rt_geo",{geo,counties:near0.map(c=>c.slug)});
       const qUP=s.toUpperCase();
 
       // 0) county E911 address locator — ONLY when the search plausibly belongs to that county
@@ -283,8 +284,9 @@ export async function GET(req:NextRequest){
         for(const c of near){ for(const src of c.sources){ try{
           const feats=await q(src,{geometry:JSON.stringify(pt),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"5"});
           const m=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean);
+          dlog("rt_step2",{county:c.slug,feats:feats.length,recs:m.length});
           if(m.length)return NextResponse.json({status:"ok",match:"point",county:c.slug,label:c.label,matches:m.slice(0,12)});
-        }catch{} } }
+        }catch(e:any){ dlog("rt_step2_err",{county:c.slug,err:String(e?.message||e)}); } } }
       }
 
       // 3) nearby parcels (vacant land with no address on file)
@@ -295,8 +297,9 @@ export async function GET(req:NextRequest){
           const withD=(feats.map((f:any)=>{const r=rec(f,src,c.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((pc:any)=>{cx+=pc[0];cy+=pc[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-geo!.lon)**2+(cy-geo!.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
           withD.sort((a,b)=>a.dist-b.dist);
           const m=withD.map(x=>x.r);
-          if(m.length){ dlog("rt_nearby",{county:c.slug,n:m.length,first:m[0]?.address||m[0]?.apn}); return NextResponse.json({status:"ok",match:"nearby",county:c.slug,label:c.label,matches:m.slice(0,12)}); }
-        }catch{} } }
+          dlog("rt_step3",{county:c.slug,feats:feats.length,recs:m.length,first:m[0]?.address||m[0]?.apn||null});
+          if(m.length){ return NextResponse.json({status:"ok",match:"nearby",county:c.slug,label:c.label,matches:m.slice(0,12)}); }
+        }catch(e:any){ dlog("rt_step3_err",{county:c.slug,err:String(e?.message||e)}); } } }
       }
     }
 
