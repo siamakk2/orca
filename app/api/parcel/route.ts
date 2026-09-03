@@ -49,10 +49,19 @@ const COUNTIES: County[] = [
 ];
 
 const bySlug = (s:string|null) => COUNTIES.find(c=>c.slug===s) || null;
-const route = (lon:number,lat:number) => COUNTIES.find(c=>{const[w,s,e,n]=c.bbox;return lon>=w&&lon<=e&&lat>=s&&lat<=n})||null;
+// Geocoded points near a county line land outside the box by metres: 4100 Mountain Home Ranch Rd
+// geocodes to lon -122.650290 and Napa's box ends at -122.65, so Napa was never queried at all.
+// A rectangle is a coarse stand-in for a county outline anyway, so pad it and let the county's
+// own parcel layer decide whether the point is really inside.
+const PAD = 0.06;
+const inBox = (c:County,lon:number,lat:number) => {
+  const[w,s,e,n]=c.bbox;
+  return lon>=w-PAD && lon<=e+PAD && lat>=s-PAD && lat<=n+PAD;
+};
+const route = (lon:number,lat:number) => COUNTIES.find(c=>inBox(c,lon,lat))||null;
 // bboxes overlap along county lines — return every candidate, nearest bbox-centre first
 const routeAll = (lon:number,lat:number) => COUNTIES
-  .filter(c=>{const[w,s,e,n]=c.bbox;return lon>=w&&lon<=e&&lat>=s&&lat<=n})
+  .filter(c=>inBox(c,lon,lat))
   .map(c=>{const[w,s,e,n]=c.bbox;return{c,d:((w+e)/2-lon)**2+((s+n)/2-lat)**2}})
   .sort((a,b)=>a.d-b.d).map(x=>x.c);
 
@@ -310,7 +319,8 @@ export async function GET(req:NextRequest){
       // 2) exact parcel sitting under the geocoded point (catches vacant land the address field misses)
       if(geo){
         const pt={x:geo.lon,y:geo.lat,spatialReference:{wkid:4326}};
-        for(const c of near){ for(const src of c.sources){ try{
+        const sweep2 = near.length?near:COUNTIES;
+        for(const c of sweep2){ for(const src of c.sources){ try{
           const feats=await q(src,{geometry:JSON.stringify(pt),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"5"});
           const m=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean);
           dlog("rt_step2",{county:c.slug,feats:feats.length,recs:m.length});
