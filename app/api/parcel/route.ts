@@ -43,7 +43,11 @@ const COUNTIES: County[] = [
   { slug:"ventura", label:"Ventura", bbox:[-119.65,33.98,-118.63,34.90], sources:[
     { url:"https://maps.ventura.org/arcgis/rest/services/SDs/Parcels/MapServer/0/query", apn:["APN","APN10"], addr:["SITUS","SITUS_STRE"] },
   ]},
+  // Cities_GIS_Parcel_Base covers incorporated cities only, so every unincorporated Sonoma
+  // parcel -- most of the county, and all of the rural acreage -- returned nothing. CRAPublic
+  // ParcelsPublic is the seamless county-wide assessor layer; same field names, full coverage.
   { slug:"sonoma", label:"Sonoma", bbox:[-123.54,38.10,-122.34,38.86], sources:[
+    { url:"https://socogis.sonomacounty.ca.gov/map/rest/services/CRAPublic/ParcelsPublic/FeatureServer/0/query", apn:["APN","Asmt"], addr:["SitusFormatted1","SitusStreetName"], num:["SitusStreetNo"], parts:["SitusFormatted1"] },
     { url:"https://socogis.sonomacounty.ca.gov/map/rest/services/OWTSPublic/Cities_GIS_Parcel_Base/FeatureServer/0/query", apn:["APN"], addr:["SitusFormatted1","SitusStreetName"] },
   ]},
 ];
