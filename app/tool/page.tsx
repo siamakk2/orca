@@ -8,7 +8,7 @@ const VIEWS: Record<Slug,{c:[number,number];z:number;label:string}> = {
   los_angeles:{c:[-118.2437,34.0522],z:11,label:"Los Angeles"},
   napa:{c:[-122.2869,38.2975],z:12,label:"Napa"},
 };
-const STYLE = {version:8,sources:{carto:{type:"raster",tiles:["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png","https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png","https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],tileSize:256,attribution:"© OpenStreetMap © CARTO"}},layers:[{id:"carto",type:"raster",source:"carto"}]} as unknown as maplibregl.StyleSpecification;
+const STYLE = {version:8,sources:{carto:{type:"raster",tiles:["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?key=cb1_2vn8_1_1181f76222b527b9a9ae311b","https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?key=cb1_2vn8_1_1181f76222b527b9a9ae311b","https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?key=cb1_2vn8_1_1181f76222b527b9a9ae311b"],tileSize:256,attribution:"© OpenStreetMap © CARTO"}},layers:[{id:"carto",type:"raster",source:"carto"}]} as unknown as maplibregl.StyleSpecification;
 
 type Match = {apn:string;address:string;acreage:number;label:string;geometry:GeoJSON.Geometry;attrs:Record<string,any>;zoning?:string;zoning_description?:string};
 
