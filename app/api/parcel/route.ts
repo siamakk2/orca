@@ -102,12 +102,31 @@ function parseAddr(s:string){
   if(!st.length)st=t.filter(x=>!SUF.has(x)&&drop(x));
   return { num, key:st[0]||"", keys:st };
 }
+// Counties record street names inconsistently ("Mt Home Ranch Rd" vs "Mountain Home Ranch Rd",
+// "St Helena" vs "Saint Helena"). Requiring the spelled-out form to appear verbatim misses the
+// abbreviated record entirely, so each token matches any of its known equivalents.
+const ALIASES: string[][] = [
+  ["MOUNTAIN","MT"], ["SAINT","ST"], ["FORT","FT"], ["POINT","PT"],
+  ["SPRINGS","SPGS"], ["JUNCTION","JCT"], ["HEIGHTS","HTS"],
+];
+function variants(k:string):string[]{
+  const g=ALIASES.find(a=>a.includes(k));
+  return g?Array.from(new Set(g)):[k];
+}
+// One field, all tokens present, each token in any of its spellings.
+function tokenWhere(field:string,keys:string[]){
+  return keys.map(k=>{
+    const vs=variants(k).map(v=>`UPPER(${field}) LIKE '%${v}%'`);
+    return vs.length>1?`(${vs.join(" OR ")})`:vs[0];
+  }).join(" AND ");
+}
+
 // Every word of the street name must appear in the same address field. Matching only the first word
 // ("OLD" in "Old Sonoma Rd") pulls in every unrelated street that happens to contain it.
 function streetWhere(src:Src,keys:string[]){
   const ks=keys.map(clean).filter(Boolean);
   if(!ks.length)return null;
-  return src.addr.map(f=>`(${ks.map(k=>`UPPER(${f}) LIKE '%${k}%'`).join(" AND ")})`).join(" OR ");
+  return src.addr.map(f=>`(${tokenWhere(f,ks)})`).join(" OR ");
 }
 // House-number predicate, pushed into the query so a common street name can't bury the right lot
 // past the server's row cap. Zero-padded county fields ("0055") are covered too.
@@ -139,7 +158,7 @@ async function countyLocate(ap:AddrPts, num:string, keys:string[]){
   // real road falls past the row cap. Same rule streetWhere already applies at step 1.
   const ks=keys.map(clean).filter(Boolean);
   if(!ks.length) return [];
-  const sw=ks.map(k=>`UPPER(${ap.street}) LIKE '%${k}%'`).join(" AND ");
+  const sw=tokenWhere(ap.street,ks);
   const p=new URLSearchParams({
     where:sw+(num?` AND ${ap.num}='${num}'`:""),
     outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25"
