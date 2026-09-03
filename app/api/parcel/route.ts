@@ -82,7 +82,7 @@ function rec(f:any,src:Src,label:string){
   return {apn:first(a,src.apn)||"—",address,acreage:acres(g),label,geometry:g,attrs:a,zoning:zoning||null};
 }
 
-const SUF=new Set(["RD","ROAD","ST","STREET","AVE","AVENUE","BLVD","DR","DRIVE","LN","LANE","WAY","CT","COURT","PL","PLACE","CIR","CIRCLE","TER","HWY","PKWY","TRL","N","S","E","W"]);
+const SUF=new Set(["RD","ROAD","ST","STREET","AVE","AVENUE","BLVD","BOULEVARD","DR","DRIVE","LN","LANE","WAY","CT","COURT","PL","PLACE","CIR","CIRCLE","TER","TERR","TERRACE","HWY","HIGHWAY","PKWY","PARKWAY","TRL","TRAIL","LOOP","ROW","RUN","PASS","PATH","WALK","PLZ","PLAZA","SQ","SQUARE","EXT","EXTENSION","CYN","CANYON","MTN","GRADE","BYP","BYPASS","N","S","E","W"]);
 const isApn = (s:string)=>/^[0-9][0-9\- ]{4,}[0-9]$/.test(s.trim());
 function apnWhere(src:Src,s:string){const raw=s.trim().toUpperCase().replace(/'/g,"''"),dig=raw.replace(/[^0-9]/g,""),c:string[]=[];for(const f of src.apn){c.push(`${f}='${raw}'`);if(dig&&dig!==raw)c.push(`${f}='${dig}'`)}return c.join(" OR ")}
 const DIR=new Set(["N","S","E","W","NE","NW","SE","SW","NORTH","SOUTH","EAST","WEST"]);
@@ -153,26 +153,36 @@ const ADDR_POINTS: AddrPts[] = [
 ];
 // Look up the exact address point in a county's E911 layer. Returns [{lon,lat,label}] sorted best-first.
 async function countyLocate(ap:AddrPts, num:string, keys:string[]){
-  // Every word of the street name must match. Searching only the first word ("MOUNTAIN" for
-  // "Mountain Home Ranch Rd") returns every Howell/Spring/Diamond Mountain address and the
-  // real road falls past the row cap. Same rule streetWhere already applies at step 1.
   const ks=keys.map(clean).filter(Boolean);
   if(!ks.length) return [];
-  const sw=tokenWhere(ap.street,ks);
-  const p=new URLSearchParams({
-    where:sw+(num?` AND ${ap.num}='${num}'`:""),
-    outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25"
-  });
-  const r=await fetch(`${ap.url}?${p}`,{cache:"no-store",signal:AbortSignal.timeout(12000)});
-  if(!r.ok) return [];
-  const d=await r.json(); if(d.error) return [];
-  let feats=(d.features||[]).filter((f:any)=>f?.geometry&&Number.isFinite(f.geometry.x));
-  // exact number missed? fall back to the whole street so the user picks their lot
-  if(!feats.length && num){
-    const p2=new URLSearchParams({ where:sw, outFields:`${ap.num},${ap.street},${ap.full}`, returnGeometry:"true", outSR:"4326", f:"json", resultRecordCount:"25" });
-    const r2=await fetch(`${ap.url}?${p2}`,{cache:"no-store",signal:AbortSignal.timeout(12000)});
-    if(r2.ok){ const d2=await r2.json(); if(!d2.error) feats=(d2.features||[]).filter((f:any)=>f?.geometry&&Number.isFinite(f.geometry.x)); }
-  }
+  const out=`${ap.num},${ap.street},${ap.full}`;
+  const run=async(where:string)=>{
+    const p=new URLSearchParams({where,outFields:out,returnGeometry:"true",outSR:"4326",f:"json",resultRecordCount:"50"});
+    try{
+      const r=await fetch(`${ap.url}?${p}`,{cache:"no-store",signal:AbortSignal.timeout(12000)});
+      if(!r.ok) return [];
+      const d=await r.json(); if(d.error) return [];
+      return (d.features||[]).filter((f:any)=>f?.geometry&&Number.isFinite(f.geometry.x));
+    }catch{ return []; }
+  };
+  // Strictest first (every token, any spelling), then progressively looser. A county that
+  // records the street differently than the user typed it must not end as a hard zero:
+  // the last rung is the single-token search this function used before, so the strict
+  // match can only ever add results, never remove them.
+  const strict=tokenWhere(ap.street,ks);
+  const loose=tokenWhere(ap.street,ks.slice(0,Math.max(1,ks.length-1)));
+  const first=tokenWhere(ap.street,[ks[0]]);
+  const rungs=[
+    ...(num?[`${strict} AND ${ap.num}='${num}'`]:[]),
+    strict,
+    ...(num&&loose!==strict?[`${loose} AND ${ap.num}='${num}'`]:[]),
+    ...(loose!==strict?[loose]:[]),
+    ...(num&&first!==loose?[`${first} AND ${ap.num}='${num}'`]:[]),
+    ...(first!==loose?[first]:[]),
+  ];
+  let feats:any[]=[]; let used=-1;
+  for(let i=0;i<rungs.length;i++){ feats=await run(rungs[i]); if(feats.length){ used=i; break; } }
+  dlog("rt_locate",{county:ap.county,keys:ks,num,rung:used,rungs:rungs.length,feats:feats.length});
   const seen=new Set<string>();
   return feats.map((f:any)=>{
     const a=f.attributes||{};
