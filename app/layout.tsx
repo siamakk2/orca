@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const SITE = "https://orca-siamakk2-8490s-projects.vercel.app";
+const SITE = "https://land.siamakconsulting.com";
 const TITLE = "K2 Investment Parcel Finder — California Land Feasibility";
 const DESC = "Type any California address and get a complete property record in under two minutes — zoning on file, FEMA flood, CAL FIRE hazard, Williamson Act, assessed value, and an AI read of what the record implies. Informational only; verify with the county.";
 
