@@ -28,6 +28,11 @@ export const metadata: Metadata = {
     images: ["/og-image.png"],
   },
   icons: { icon: "/k2-logo.png", apple: "/k2-logo.png" },
+  // Google Search Console ownership. GSC issues one token per property and
+  // accepts it either as this meta tag or as a DNS TXT record
+  // "google-site-verification=<token>", so the same value covers both methods
+  // for a URL-prefix property. A Domain property accepts only the DNS form.
+  verification: { google: "AwboRwijDM9A4KHc7fgar3v6wgPLQ-F-0zZgEJa1Wzc" },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (<html lang="en"><body>{children}</body></html>);
