@@ -17,7 +17,7 @@ const COUNTIES: County[] = [
     { url:"https://public.gis.lacounty.gov/public/rest/services/LACounty_Cache/LACounty_Parcel/MapServer/0/query", apn:["AIN","APN"], addr:["SitusFullAddress","SitusAddress"] },
   ]},
   { slug:"napa", label:"Napa", bbox:[-122.65,38.15,-122.06,38.87], sources:[
-    { url:"https://gis.napacounty.gov/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query", apn:["asmtwithdash","asmt"], addr:["streetaddr"] },
+    { url:"https://gis.napacounty.gov.invalid/arcgis/rest/services/Hosted/Parcels_Public/FeatureServer/0/query", apn:["asmtwithdash","asmt"], addr:["streetaddr"] },
   ]},
   { slug:"orange", label:"Orange", bbox:[-118.13,33.34,-117.40,33.95], sources:[
     { url:"https://www.ocgis.com/arcpub/rest/services/Map_Layers/Parcels/MapServer/0/query", apn:["ASSESSMENT_NO"], addr:["SITE_ADDRESS"] },
