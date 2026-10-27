@@ -74,13 +74,37 @@ function rings2geo(rings:number[][][]){const o=rings.filter(cw),h=rings.filter(r
 function first(a:Record<string,unknown>,n:string[]){for(const k of n){const v=a?.[k];if(v!=null&&String(v).trim()!=="")return String(v).trim()}return null}
 function acres(g:unknown){return Math.round(area(g as GeoJSON.Geometry)/4046.8564224*1000)/1000}
 
-async function q(src:Src,extra:Record<string,string>,ms=10000){
+// Every county query below is wrapped in a catch so one dead endpoint cannot sink a whole
+// search. The cost of that is a county whose service is down looks exactly like a county with
+// no matching parcel, and the user is told the property does not exist. Health records which
+// counties actually answered, so the two can be told apart when it is time to write a message.
+type Health = { ok:Set<string>; bad:Map<string,string> };
+const newHealth = ():Health => ({ ok:new Set(), bad:new Map() });
+function downAmong(h:Health, cands:County[]):County[]{
+  // "Down" means every attempt against that county threw. A county that answered once is up,
+  // even if a later, narrower query against it failed.
+  return cands.filter(c=>h.bad.has(c.slug) && !h.ok.has(c.slug));
+}
+function andList(xs:string[]){ return xs.length<2?xs.join(""):xs.slice(0,-1).join(", ")+" and "+xs[xs.length-1]; }
+// An ArcGIS error that complains about the query rather than the service is our defect: a field
+// name we configured wrongly will never start working on a retry, so it must never be reported
+// as a county outage or carry "try again shortly".
+const OUR_FAULT=/invalid query|invalid field|cannot perform query|invalid parameter|unable to complete operation|does not exist/i;
+const isOurFault=(m?:string)=>!!m&&OUR_FAULT.test(m);
+
+async function q(src:Src,extra:Record<string,string>,ms=10000,h?:Health,slug?:string){
   const p=new URLSearchParams({outFields:"*",returnGeometry:"true",outSR:"4326",f:"json",...extra});
-  const r=await fetch(`${src.url}?${p}`,{cache:"no-store",signal:AbortSignal.timeout(ms)});
-  if(!r.ok)throw new Error(`HTTP ${r.status}`);
-  const d=await r.json();
-  if(d.error)throw new Error(d.error?.message||"GIS error");
-  return d.features||[];
+  try{
+    const r=await fetch(`${src.url}?${p}`,{cache:"no-store",signal:AbortSignal.timeout(ms)});
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
+    if(d.error)throw new Error(d.error?.message||"GIS error");
+    if(h&&slug)h.ok.add(slug);
+    return d.features||[];
+  }catch(e:any){
+    if(h&&slug)h.bad.set(slug,String(e?.message||e).trim().slice(0,200));
+    throw e;
+  }
 }
 function rec(f:any,src:Src,label:string){
   if(!f?.geometry?.rings)return null;
@@ -242,6 +266,7 @@ async function regridPoint(lon:number,lat:number){
 
 export async function GET(req:NextRequest){
   const sp=req.nextUrl.searchParams; let s=(sp.get("q")||"").trim();
+  const H=newHealth();
   if(s){
     s=s.replace(/^\s*(apn|parcel|assessor)\s*[:#]?\s*/i,"");
     const apn=isApn(s);
@@ -250,7 +275,7 @@ export async function GET(req:NextRequest){
     if(apn){
       const cands = bySlug(sp.get("county")) ? [bySlug(sp.get("county"))!] : COUNTIES;
       for(const c of cands){ for(const src of c.sources){ try{
-        const feats=await q(src,{where:apnWhere(src,s),resultRecordCount:"12"});
+        const feats=await q(src,{where:apnWhere(src,s),resultRecordCount:"12"},10000,H,c.slug);
         const matches=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean).slice(0,12);
         if(matches.length)return NextResponse.json({status:"ok",county:c.slug,label:c.label,matches});
       }catch{} } }
@@ -282,7 +307,7 @@ export async function GET(req:NextRequest){
           const out:any[]=[];
           for(const pt of usePts){
             for(const src of c.sources){ try{
-              const feats=await q(src,{geometry:JSON.stringify({x:pt.lon,y:pt.lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"2"});
+              const feats=await q(src,{geometry:JSON.stringify({x:pt.lon,y:pt.lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"2"},10000,H,c.slug);
               for(const f of feats){ const r=rec(f,src,c.label); if(r){ if(!r.address&&pt.label)r.address=pt.label; if(!out.some(o=>o.apn===r.apn)) out.push(r); } }
             }catch{} }
             if(exact.length&&out.length)break;
@@ -305,11 +330,11 @@ export async function GET(req:NextRequest){
         const sw=streetWhere(src,pa.keys); if(!sw)continue;
         let feats:any[]=[];
         for(const nw of numWheres(src,pa.num)){
-          try{ feats=await q(src,{where:`(${sw}) AND (${nw})`,resultRecordCount:"25"}); }catch{ continue; }
+          try{ feats=await q(src,{where:`(${sw}) AND (${nw})`,resultRecordCount:"25"},10000,H,c.slug); }catch{ continue; }
           if(feats.length) break;
         }
         // broad pass: no row-cap ordering bias, and a cap high enough to reach the right lot
-        if(!feats.length){ try{ feats=await q(src,{where:sw,resultRecordCount:"200"}); }catch{ continue; } }
+        if(!feats.length){ try{ feats=await q(src,{where:sw,resultRecordCount:"200"},10000,H,c.slug); }catch{ continue; } }
         const all=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean) as any[];
         if(!all.length)continue;
         const exact=want!=null?all.filter(m=>numOf(m.address)===want):all;
@@ -325,7 +350,7 @@ export async function GET(req:NextRequest){
         const pt={x:geo.lon,y:geo.lat,spatialReference:{wkid:4326}};
         const sweep2 = near.length?near:COUNTIES;
         for(const c of sweep2){ for(const src of c.sources){ try{
-          const feats=await q(src,{geometry:JSON.stringify(pt),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"5"});
+          const feats=await q(src,{geometry:JSON.stringify(pt),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"5"},10000,H,c.slug);
           const m=feats.map((f:any)=>rec(f,src,c.label)).filter(Boolean);
           dlog("rt_step2",{county:c.slug,feats:feats.length,recs:m.length});
           if(m.length)return NextResponse.json({status:"ok",match:"point",county:c.slug,label:c.label,matches:m.slice(0,12)});
@@ -336,7 +361,7 @@ export async function GET(req:NextRequest){
       if(geo){
         const d=0.0012, env={xmin:geo.lon-d,ymin:geo.lat-d,xmax:geo.lon+d,ymax:geo.lat+d,spatialReference:{wkid:4326}};
         for(const c of near){ for(const src of c.sources){ try{
-          const feats=await q(src,{geometry:JSON.stringify(env),geometryType:"esriGeometryEnvelope",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"25"});
+          const feats=await q(src,{geometry:JSON.stringify(env),geometryType:"esriGeometryEnvelope",inSR:"4326",spatialRel:"esriSpatialRelIntersects",resultRecordCount:"25"},10000,H,c.slug);
           const withD=(feats.map((f:any)=>{const r=rec(f,src,c.label);if(!r)return null;let cx=0,cy=0,nn=0;const gg:any=r.geometry;(gg.type==="Polygon"?[gg.coordinates]:gg.coordinates).forEach((pl:any)=>pl[0].forEach((pc:any)=>{cx+=pc[0];cy+=pc[1];nn++}));cx/=nn;cy/=nn;return {r,dist:(cx-geo!.lon)**2+(cy-geo!.lat)**2}}).filter(Boolean) as {r:any,dist:number}[]);
           withD.sort((a,b)=>a.dist-b.dist);
           const m=withD.map(x=>x.r);
@@ -355,18 +380,74 @@ export async function GET(req:NextRequest){
       }catch{}
     }
 
+    // Nothing matched. Before telling someone their property does not exist, check whether the
+    // counties that would hold it actually answered. A dead endpoint is an outage, not a vacancy.
+    // Nothing matched. Before telling someone their property does not exist, work out whether the
+    // counties that would hold it answered — and, when one failed, whose fault that was. Only a
+    // county the search actually pointed at is worth naming: when the geocoder placed the address,
+    // a failure three counties away is noise, not an explanation.
+    const inScope = geo ? routeAll(geo.lon,geo.lat) : [];
+    const failedHere = downAmong(H, inScope);
+    const outages = failedHere.filter(c=>!isOurFault(H.bad.get(c.slug)));
+    const broken = failedHere.filter(c=>isOurFault(H.bad.get(c.slug)));
+    const elsewhere = downAmong(H, COUNTIES).filter(c=>!failedHere.includes(c));
+    const ourBugs = [...broken, ...elsewhere.filter(c=>isOurFault(H.bad.get(c.slug)))];
+    if(ourBugs.length) dlog("rt_source_misconfigured",{q:s,detail:ourBugs.map(c=>({county:c.label,error:H.bad.get(c.slug)||null}))});
+
+    if(outages.length){
+      const names=outages.map(c=>c.label);
+      dlog("rt_source_down",{q:s,counties:names,detail:outages.map(c=>({county:c.label,error:H.bad.get(c.slug)||null}))});
+      return NextResponse.json({
+        status:"source_down",
+        unreachable:names,
+        detail:outages.map(c=>({county:c.label,error:H.bad.get(c.slug)||null})),
+        message: names.length===1
+          ? `${names[0]} County's parcel service isn't responding, so we can't say whether a parcel exists at "${s}". That's an outage at the county, not a missing property — try again shortly, or search by APN.`
+          : `Parcel services for ${andList(names)} Counties aren't responding, so we can't say whether a parcel exists at "${s}". That's an outage at the counties, not a missing property — try again shortly.`,
+      });
+    }
+    if(broken.length){
+      const names=broken.map(c=>c.label);
+      return NextResponse.json({
+        status:"source_error",
+        unreachable:names,
+        detail:broken.map(c=>({county:c.label,error:H.bad.get(c.slug)||null})),
+        message:`${andList(names)} County rejected our query for "${s}", so we can't confirm whether a parcel exists there. That's a fault on our side, not a missing property — check with the county directly while we fix it.`,
+      });
+    }
     if(geo && !routeAll(geo.lon,geo.lat).length) return NextResponse.json({status:"expanding",message:`That address is in California but outside the counties we cover so far — we're expanding statewide.`});
-    return NextResponse.json({status:"not_found",message:`No parcel found for "${s}". Try the full street address (street + city) or the APN.`});
+    // Genuine outages in counties the search did not point at are a footnote, never the headline.
+    const degraded=elsewhere.filter(c=>!isOurFault(H.bad.get(c.slug))).map(c=>c.label);
+    if(degraded.length) dlog("rt_source_degraded",{q:s,counties:degraded});
+    return NextResponse.json({
+      status:"not_found",
+      ...(degraded.length?{degraded}:{}),
+      message:`No parcel found for "${s}". Try the full street address (street + city) or the APN.`
+        + (degraded.length?` ${andList(degraded)} ${degraded.length===1?"County's service didn't":"County services didn't"} respond, so this search may be incomplete.`:""),
+    });
   }
   const lat=parseFloat(sp.get("lat")||""),lon=parseFloat(sp.get("lon")||"");
   if(Number.isNaN(lat)||Number.isNaN(lon))return NextResponse.json({status:"error",message:"q or lat/lon required"},{status:400});
   for(const county of routeAll(lon,lat)){
     for(const src of county.sources){try{
-      const feats=await q(src,{geometry:JSON.stringify({x:lon,y:lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects"});
+      const feats=await q(src,{geometry:JSON.stringify({x:lon,y:lat,spatialReference:{wkid:4326}}),geometryType:"esriGeometryPoint",inSR:"4326",spatialRel:"esriSpatialRelIntersects"},10000,H,county.slug);
       const m=feats.map((f:any)=>rec(f,src,county.label)).filter(Boolean);
       if(m.length)return NextResponse.json({status:"ok",county:county.slug,label:county.label,matches:m});
     }catch{}}
   }
   if(REGRID){ try{const m=await regridPoint(lon,lat);if(m.length)return NextResponse.json({status:"ok",provider:"regrid",label:m[0]!.label,matches:m})}catch{} }
+  const pDown=downAmong(H, routeAll(lon,lat)).filter(c=>!isOurFault(H.bad.get(c.slug)));
+  if(pDown.length){
+    const names=pDown.map(c=>c.label);
+    dlog("rt_source_down",{point:[lon,lat],counties:names,detail:pDown.map(c=>({county:c.label,error:H.bad.get(c.slug)||null}))});
+    return NextResponse.json({
+      status:"source_down",
+      unreachable:names,
+      detail:pDown.map(c=>({county:c.label,error:H.bad.get(c.slug)||null})),
+      message: names.length===1
+        ? `${names[0]} County's parcel service isn't responding, so we can't read the parcel at that spot. That's an outage at the county — try again shortly.`
+        : `Parcel services for ${andList(names)} Counties aren't responding, so we can't read the parcel at that spot. Try again shortly.`,
+    });
+  }
   return NextResponse.json({status:"not_found",message:"No parcel at that spot."});
 }
