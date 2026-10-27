@@ -196,6 +196,8 @@ const CSS = `
   background:rgba(255,255,255,.95);backdrop-filter:blur(8px);border:1px solid rgba(236,230,222,.9);
   border-radius:999px;padding:8px 18px;font-size:12.5px;color:var(--taupe);box-shadow:var(--e2),var(--lift);
   max-width:86vw;text-align:center}
+.hint.warn{background:#fff6ed;border-color:#f3d2ab;color:#8a4414;border-radius:13px;
+  max-width:min(620px,88vw);text-align:left;padding:12px 16px;font-size:13px;line-height:1.5}
 
 /* ── parcel chooser ── */
 .pick{position:absolute;top:80px;left:14px;z-index:11;width:376px;max-width:92vw;max-height:66vh;overflow-y:auto;
@@ -344,6 +346,8 @@ export default function Home() {
   const [addr, setAddr] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("Search an address or APN, or tap the map.");
+  // An unreachable county reads as a warning, not as a search result.
+  const [tone, setTone] = useState<"info" | "warn">("info");
   const [matches, setMatches] = useState<Match[]>([]);
   const [sel, setSel] = useState<Match | null>(null);
   const [report, setReport] = useState<any>(null);
@@ -478,7 +482,7 @@ export default function Home() {
   }
 
   async function run(url: string, label: string) {
-    setIntro(false); setBusy(true); setSel(null); setMatches([]); setReport(null); setMsg(label);
+    setIntro(false); setBusy(true); setSel(null); setMatches([]); setReport(null); setMsg(label); setTone("info");
     try {
       const r = await fetch(url); const d = await r.json();
       if (d.status === "ok" && d.matches?.length) {
@@ -491,7 +495,11 @@ export default function Home() {
             : street ? "That number isn't in the county address book. These are the lots on that road."
             : `${d.matches.length} parcels match. Pick yours.`);
         }
-      } else { draw(null); setMsg(d.message || "No parcel found."); }
+      } else {
+        draw(null);
+        setTone(d.status === "source_down" || d.degraded?.length ? "warn" : "info");
+        setMsg(d.message || "No parcel found.");
+      }
     } catch { setMsg("Search failed — try again."); }
     finally { setBusy(false); }
   }
@@ -775,7 +783,7 @@ export default function Home() {
       )}
 
       {!intro && !sel && matches.length === 0 && (
-        <div className="hint">{!ready ? "Loading map…" : msg}</div>
+        <div className={`hint${tone === "warn" ? " warn" : ""}`} role={tone === "warn" ? "status" : undefined}>{!ready ? "Loading map…" : msg}</div>
       )}
 
       {!intro && (
