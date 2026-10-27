@@ -54,6 +54,15 @@ function asDate(v: any): Date | null {
   const d = new Date(String(v)); return isNaN(+d) ? null : d;
 }
 const monthYear = (d: Date) => d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+// Assessor layers store situs addresses in upper case. Set in Georgia at display size that
+// reads as shouting and costs a second line, so case it for the page and leave mixed-case
+// sources alone. Directionals and state codes stay capitalised.
+const KEEP_CAPS = new Set(["CA", "US", "USA", "NE", "NW", "SE", "SW", "LLC", "HOA", "PO"]);
+function titleAddr(s: string): string {
+  if (!s || s !== s.toUpperCase()) return s;
+  return s.toLowerCase().replace(/\b[a-z0-9']+\b/g, w =>
+    KEEP_CAPS.has(w.toUpperCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1));
+}
 function centroid(g: any) { const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates; let x = 0, y = 0, n = 0; polys.forEach((pl: any) => pl[0].forEach((c: any) => { x += c[0]; y += c[1]; n++; })); return [x / n, y / n]; }
 
 /* ── Derived facts the raw layers contain but the record never showed ── */
@@ -314,6 +323,8 @@ const CSS = `
   .grab{display:block;position:sticky;top:0;z-index:4;background:var(--paper);padding:9px 0 3px;text-align:center}
   .grab::after{content:"";display:inline-block;width:38px;height:4px;border-radius:999px;background:#e2dace}
   .vd{border-radius:0}
+  .dz>.grab{background:#3a322a}
+  .dz>.grab::after{background:rgba(255,255,255,.28)}
   .dz-scroll{padding-bottom:env(safe-area-inset-bottom)}
   .tilt{bottom:auto;top:76px}
   .hint{bottom:auto;top:76px;left:14px;right:14px;transform:none;max-width:none}
@@ -434,7 +445,7 @@ export default function Home() {
         .then(d => setCtx(d)).catch(() => setCtx(null)).finally(() => setCtxBusy(false));
     } catch { setCtxBusy(false); }
     setSel(mt); setMatches([]); setDone(new Set()); draw(mt.geometry, mt.acreage);
-    setMsg(`${mt.label} County — ${mt.address || mt.apn}`);
+    setMsg(`${mt.label} County — ${titleAddr(mt.address) || mt.apn}`);
     setReport(null); setRepBusy(true); setAnalysis(null);
     const [lon, lat] = centroid(mt.geometry as any);
     const cSlug = mt.label === "Napa" ? "napa" : mt.label === "Los Angeles" ? "los_angeles" : mt.label.toLowerCase().replace(/\s+/g, "_");
@@ -571,7 +582,7 @@ export default function Home() {
     doc.setDrawColor(236, 230, 222); doc.setLineWidth(0.4); doc.line(M, 25, W - M, 25);
     y = 38;
     doc.setTextColor(42, 36, 32); doc.setFont("times", "normal"); doc.setFontSize(17);
-    doc.text(sel.address || "Vacant parcel (no address on file)", M, y);
+    doc.text(titleAddr(sel.address) || "Vacant parcel (no address on file)", M, y);
     drawShape(doc, sel.geometry, W - M - 46, 30, 46, 34);
     y += 7; doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(125, 114, 103);
     doc.text(`APN ${sel.apn}    ${sel.label} County    ${sel.acreage} acres`, M, y);
@@ -780,7 +791,7 @@ export default function Home() {
           <h2>{msg}</h2>
           {matches.map((m, i) => (
             <button key={i} onClick={() => choose(m)}>
-              <b>{m.address || "No address on file"}</b>
+              <b>{titleAddr(m.address) || "No address on file"}</b>
               <span>APN {m.apn} · {m.acreage} acres</span>
             </button>
           ))}
@@ -794,7 +805,7 @@ export default function Home() {
             <div className="vd-top">
               <div style={{ minWidth: 0 }}>
                 <div className="vd-where">{sel.label} County{juris?.status ? ` — ${juris.status.replace("Unincorporated county land", "unincorporated")}` : ""}</div>
-                <h2 className="vd-addr">{sel.address || "Vacant — no address on file"}</h2>
+                <h2 className="vd-addr">{titleAddr(sel.address) || "Vacant — no address on file"}</h2>
                 <div className="vd-meta">APN {sel.apn} · {sel.acreage} acres</div>
               </div>
               <div className="vd-acts">
